@@ -52,3 +52,5 @@ phbookingmedth_dump_*.sql
 test-results/
 pw-test-log.txt
 pw-*.spec.js
+tests/tmp-*.js
+success-*.png

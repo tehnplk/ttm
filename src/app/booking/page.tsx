@@ -21,6 +21,7 @@ function BookingPageContent() {
   const pathname = usePathname();
   const [isLoading, setIsLoading] = useState(false);
   const [bookingId, setBookingId] = useState<string>('');
+  const [weeklyBookingCount, setWeeklyBookingCount] = useState<number | null>(null);
   const [bookingEnabled, setBookingEnabled] = useState<boolean>(true);
   const [bookingMessage, setBookingMessage] = useState<string>('');
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -150,6 +151,7 @@ function BookingPageContent() {
 
       const data = await response.json();
       setBookingId(data.bookingId || `BK-${Date.now().toString().slice(-6)}`);
+      setWeeklyBookingCount(typeof data.weeklyBookingCount === 'number' ? data.weeklyBookingCount : null);
       setStep(BookingStep.SUCCESS);
       
       // Show QR code, no redirect
@@ -272,12 +274,15 @@ function BookingPageContent() {
         return (
           <SuccessScreen
             bookingId={bookingId || `BK-${Date.now().toString().slice(-6)}`}
+            weeklyBookingCount={weeklyBookingCount}
             onHome={() => {
               resetBooking();
+              setWeeklyBookingCount(null);
               setStep(BookingStep.BRANCH_SELECTION);
             }}
             onCheckHistory={() => {
               resetBooking();
+              setWeeklyBookingCount(null);
               setStep(BookingStep.MY_BOOKINGS);
             }}
           />
