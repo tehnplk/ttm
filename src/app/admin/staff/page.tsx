@@ -497,7 +497,6 @@ export default function AdminStaffPage() {
             <table className="min-w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-stone-200 bg-stone-50 text-[11px] font-medium uppercase text-stone-600">
-                  <th className="px-4 py-3 text-center w-12">ลำดับ</th>
                   <th className="px-4 py-3 text-left">
                     <button
                       type="button"
@@ -508,7 +507,7 @@ export default function AdminStaffPage() {
                       }
                       className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-left font-medium text-stone-600 hover:bg-stone-100 hover:text-stone-900"
                     >
-                      <span>ลำดับการแสดง</span>
+                      <span>ลำดับแอพ</span>
                       <Icon
                         icon={
                           displayOrderSort === null
@@ -532,14 +531,11 @@ export default function AdminStaffPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredStaff.map((s, index) => (
+                {filteredStaff.map((s) => (
                   <tr
                     key={s.id}
                     className="border-b border-stone-100 transition-colors hover:bg-stone-50/50"
                   >
-                    <td className="px-4 py-3 text-center text-sm text-stone-600 font-medium">
-                      {index + 1}
-                    </td>
                     <td className="px-4 py-3 text-sm text-stone-700 font-mono">
                       {s.employee_number || '-'}
                     </td>
