@@ -47,3 +47,8 @@ phbookingmedth_dump_*.sql
 # trash
 .trash/
 
+# playwright temp artifacts
+.playwright-cli/
+test-results/
+pw-test-log.txt
+pw-*.spec.js

@@ -15,6 +15,7 @@ export async function GET(request: Request) {
       prename: string;
       fname: string;
       lname: string;
+      employee_number: string | null;
       position: number | null;
       branch_id: number | null;
       sex: string | null;
@@ -31,6 +32,7 @@ export async function GET(request: Request) {
         prename: string;
         fname: string;
         lname: string;
+        employee_number: string | null;
         position: number | null;
         branch_id: number | null;
         sex: string | null;
@@ -43,6 +45,7 @@ export async function GET(request: Request) {
           prename,
           fname,
           lname,
+          COALESCE(employee_number, NULL) as employee_number,
           position,
           COALESCE(branch_id, NULL) as branch_id,
           sex,
@@ -61,6 +64,7 @@ export async function GET(request: Request) {
           prename: string;
           fname: string;
           lname: string;
+          employee_number: string | null;
           position: number | null;
           branch_id: number | null;
           sex: string | null;
@@ -73,6 +77,7 @@ export async function GET(request: Request) {
             prename,
             fname,
             lname,
+            NULL as employee_number,
             position,
             NULL as branch_id,
             sex,
@@ -313,6 +318,7 @@ export async function GET(request: Request) {
         id: employeeId,
         name: `${e.prename || ''}${e.fname || ''} ${e.lname || ''}`.trim(),
         role: e.position?.toString() || "",
+        employeeNumber: e.employee_number || null,
         nickname: e.nickname || "",
         image: e.image ? (e.image.startsWith('/') ? e.image : `/images/${e.image}`) : "/placeholder-staff.png",
         specialty: [],

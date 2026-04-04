@@ -135,6 +135,37 @@ export const StaffSelection: React.FC<StaffSelectionProps> = ({
     return { available: true, reason: '' };
   };
 
+  const displayedStaff = availableStaff
+    .map((staffMember) => ({ staffMember }))
+    .sort((a, b) => {
+      const aAvailable = checkAvailability(a.staffMember.id).available;
+      const bAvailable = checkAvailability(b.staffMember.id).available;
+
+      if (aAvailable !== bAvailable) {
+        return aAvailable ? -1 : 1;
+      }
+
+      const aSelected = selectedStaff?.id === a.staffMember.id;
+      const bSelected = selectedStaff?.id === b.staffMember.id;
+
+      if (aSelected !== bSelected) {
+        return aSelected ? -1 : 1;
+      }
+
+      const aNumber = Number.parseInt(String(a.staffMember.employeeNumber ?? ''), 10);
+      const bNumber = Number.parseInt(String(b.staffMember.employeeNumber ?? ''), 10);
+
+      const normalizedANumber = Number.isFinite(aNumber) ? aNumber : Number.POSITIVE_INFINITY;
+      const normalizedBNumber = Number.isFinite(bNumber) ? bNumber : Number.POSITIVE_INFINITY;
+
+      if (normalizedANumber !== normalizedBNumber) {
+        return normalizedANumber - normalizedBNumber;
+      }
+
+      return a.staffMember.name.localeCompare(b.staffMember.name, 'th');
+    })
+    .map(({ staffMember }) => staffMember);
+
   return (
     <div className="space-y-6 animate-fade-in pb-20">
       {/* Search Input */}
@@ -159,12 +190,12 @@ export const StaffSelection: React.FC<StaffSelectionProps> = ({
           <div className="text-center py-12 text-rose-600">
             {error}
           </div>
-        ) : availableStaff.length === 0 ? (
+        ) : displayedStaff.length === 0 ? (
           <div className="text-center py-8 text-stone-400">
             ไม่พบรายชื่อพนักงาน
           </div>
         ) : (
-          availableStaff.map((staffMember) => {
+          displayedStaff.map((staffMember) => {
             const isSelected = selectedStaff?.id === staffMember.id;
             const { available, reason } = checkAvailability(staffMember.id);
 
