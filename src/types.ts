@@ -33,6 +33,7 @@ export interface Staff {
   id: string;
   name: string;
   role: string;
+  employeeNumber?: string | null;
   image: string;
   specialty: string[];
 }
