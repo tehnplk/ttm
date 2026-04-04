@@ -9,11 +9,12 @@ import domtoimage from 'dom-to-image';
 
 interface SuccessScreenProps {
   bookingId: string;
+  weeklyBookingCount?: number | null;
   onHome: () => void;
   onCheckHistory: () => void;
 }
 
-export const SuccessScreen: React.FC<SuccessScreenProps> = ({ bookingId, onHome, onCheckHistory }) => {
+export const SuccessScreen: React.FC<SuccessScreenProps> = ({ bookingId, weeklyBookingCount = null, onHome, onCheckHistory }) => {
   const router = useRouter();
   const ticketRef = useRef<HTMLDivElement>(null);
 
@@ -92,8 +93,12 @@ export const SuccessScreen: React.FC<SuccessScreenProps> = ({ bookingId, onHome,
            </div>
            
            <div className="text-center space-y-1">
-             <p className="text-stone-400 text-sm uppercase tracking-wider font-semibold">Booking ID</p>
              <p className="text-2xl font-mono font-bold text-stone-800 tracking-widest">{bookingId}</p>
+             {typeof weeklyBookingCount === 'number' && weeklyBookingCount > 3 && (
+               <p className="text-sm font-medium text-amber-700">
+                 สัปดาห์นี้ท่านจองนัด {weeklyBookingCount} ครั้ง
+               </p>
+             )}
            </div>
         </div>
 

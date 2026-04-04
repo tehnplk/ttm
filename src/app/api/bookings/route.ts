@@ -17,6 +17,30 @@ const bookingSchema = z.object({
   userId: z.string().nullable().optional(), // LINE user ID from URL parameter
 });
 
+function getWeekRangeFromDate(dateStr: string): { weekStart: string; weekEnd: string } {
+  const baseDate = new Date(`${dateStr}T00:00:00`);
+  const dayOfWeek = baseDate.getDay();
+  const diffToMonday = (dayOfWeek + 6) % 7;
+
+  const monday = new Date(baseDate);
+  monday.setDate(baseDate.getDate() - diffToMonday);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const formatDate = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  return {
+    weekStart: formatDate(monday),
+    weekEnd: formatDate(sunday),
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Check if booking is enabled - MANDATORY CHECK
@@ -389,9 +413,29 @@ export async function POST(request: NextRequest) {
       console.error('Failed to broadcast booking event:', err);
     });
 
+    let weeklyBookingCount: number | null = null;
+    if (userId && userId.trim().length > 0) {
+      try {
+        const { weekStart, weekEnd } = getWeekRangeFromDate(bookDateStr);
+        const weeklyCountRows = await prisma.$queryRaw<Array<{ total: bigint | number }>>`
+          SELECT COUNT(*) as total
+          FROM booking
+          WHERE line_id = ${userId}
+            AND DATE(book_date) BETWEEN ${weekStart} AND ${weekEnd}
+            AND (status IS NULL OR LOWER(status) NOT IN ('cancelled', 'canceled'))
+        `;
+
+        const total = weeklyCountRows[0]?.total;
+        weeklyBookingCount = typeof total === 'bigint' ? Number(total) : Number(total || 0);
+      } catch (countError) {
+        console.error('Failed to calculate weekly booking count:', countError);
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      bookingId: bookingId
+      bookingId: bookingId,
+      weeklyBookingCount
     }, { status: 201 });
   } catch (error: any) {
     console.error('❌ Error creating booking:', error);
