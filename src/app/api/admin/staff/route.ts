@@ -48,8 +48,7 @@ export async function GET(request: NextRequest) {
         e.created_at,
         e.updated_at
       FROM employee e
-      WHERE e.is_active = 'yes' OR e.is_active IS NULL
-      ORDER BY CAST(IFNULL(e.employee_number, '999999') AS UNSIGNED) ASC, e.fname ASC, e.lname ASC
+      ORDER BY e.id ASC
     `;
 
     // Get positions and branches for mapping

@@ -63,6 +63,8 @@ export default function AdminStaffPage() {
   const [showModal, setShowModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [branchFilter, setBranchFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [displayOrderSort, setDisplayOrderSort] = useState<"asc" | "desc" | null>("asc");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
@@ -92,22 +94,11 @@ export default function AdminStaffPage() {
       if (!res.ok) {
         throw new Error(data.error || "โหลดข้อมูลพนักงานไม่สำเร็จ");
       }
-      // Sort by employee_number (ascending), then by name
-      const sortedStaff = (data.staff ?? []).sort((a: StaffRow, b: StaffRow) => {
-        // First, sort by employee_number
-        const aNum = a.employee_number ? Number(a.employee_number) : 999999;
-        const bNum = b.employee_number ? Number(b.employee_number) : 999999;
-        if (aNum !== bNum) {
-          return aNum - bNum;
-        }
-        // If employee_number is the same or both null, sort by name
-        const aName = `${a.prename}${a.fname} ${a.lname}`.trim();
-        const bName = `${b.prename}${b.fname} ${b.lname}`.trim();
-        return aName.localeCompare(bName, 'th');
-      });
-      
-      setStaff(sortedStaff);
-      setFilteredStaff(sortedStaff);
+      const staffList = data.staff ?? [];
+
+      setStaff(staffList);
+      setFilteredStaff(staffList);
+      setDisplayOrderSort("asc");
       setError(null);
     } catch (err: any) {
       setError(err.message ?? "โหลดข้อมูลพนักงานไม่สำเร็จ");
@@ -141,14 +132,22 @@ export default function AdminStaffPage() {
     void loadOptions();
   }, []);
 
-  // Filter staff based on search query and branch filter
+  // Filter staff based on search query, branch filter, status filter, and display-order sort
   useEffect(() => {
     let filtered = [...staff];
+
+    const matchesText = (value: string | number | null | undefined, query: string) =>
+      String(value ?? "").toLowerCase().includes(query);
 
     // Filter by branch if selected
     if (branchFilter) {
       const branchIdNum = parseInt(branchFilter);
       filtered = filtered.filter((s) => s.branch_id === branchIdNum);
+    }
+
+    // Filter by active/inactive status if selected
+    if (statusFilter) {
+      filtered = filtered.filter((s) => (s.is_active || "no") === statusFilter);
     }
 
     // Filter by search query
@@ -157,30 +156,31 @@ export default function AdminStaffPage() {
       const query = trimmedQuery.toLowerCase();
       filtered = filtered.filter(
         (s) =>
-          `${s.prename}${s.fname} ${s.lname}`.toLowerCase().includes(query) ||
-          s.position_name?.toLowerCase().includes(query) ||
-          s.branch_name?.toLowerCase().includes(query) ||
-          s.tel?.toLowerCase().includes(query) ||
-          s.employee_number?.toLowerCase().includes(query),
+          matchesText(`${s.prename} ${s.fname} ${s.lname}`.trim(), query) ||
+          matchesText(s.position_name, query) ||
+          matchesText(s.branch_name, query) ||
+          matchesText(s.tel, query) ||
+          matchesText(s.employee_number, query),
       );
     }
 
-    // Sort by employee_number (ascending), then by name
-    filtered.sort((a, b) => {
-      // First, sort by employee_number
-      const aNum = a.employee_number ? Number(a.employee_number) : 999999;
-      const bNum = b.employee_number ? Number(b.employee_number) : 999999;
-      if (aNum !== bNum) {
-        return aNum - bNum;
-      }
-      // If employee_number is the same or both null, sort by name
-      const aName = `${a.prename}${a.fname} ${a.lname}`.trim();
-      const bName = `${b.prename}${b.fname} ${b.lname}`.trim();
-      return aName.localeCompare(bName, 'th');
-    });
+    if (displayOrderSort) {
+      filtered = [...filtered].sort((a, b) => {
+        const aValue = a.employee_number ? Number(a.employee_number) : Number.POSITIVE_INFINITY;
+        const bValue = b.employee_number ? Number(b.employee_number) : Number.POSITIVE_INFINITY;
+
+        if (aValue === bValue) {
+          const aId = Number(a.id);
+          const bId = Number(b.id);
+          return displayOrderSort === "asc" ? aId - bId : bId - aId;
+        }
+
+        return displayOrderSort === "asc" ? aValue - bValue : bValue - aValue;
+      });
+    }
 
     setFilteredStaff(filtered);
-  }, [searchQuery, staff, branchFilter]);
+  }, [searchQuery, staff, branchFilter, statusFilter, displayOrderSort]);
 
   // Calculate age from birth date
   function calculateAge(birthDate: string): number | null {
@@ -425,7 +425,7 @@ export default function AdminStaffPage() {
         </button>
       </div>
 
-      {/* Search bar and branch filter */}
+      {/* Search bar and filters */}
       <div className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <div className="flex items-center gap-2 flex-1 min-w-[200px]">
@@ -441,6 +441,18 @@ export default function AdminStaffPage() {
                   {b.name}
                 </option>
               ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 min-w-[220px]">
+            <label className="text-xs font-medium text-stone-700 whitespace-nowrap">สถานะ:</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="flex-1 rounded-lg border border-stone-300 px-3 py-1.5 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200"
+            >
+              <option value="">-- ทั้งหมด --</option>
+              <option value="yes">ใช้งาน</option>
+              <option value="no">ไม่ใช้งาน</option>
             </select>
           </div>
         </div>
@@ -486,7 +498,29 @@ export default function AdminStaffPage() {
               <thead>
                 <tr className="border-b border-stone-200 bg-stone-50 text-[11px] font-medium uppercase text-stone-600">
                   <th className="px-4 py-3 text-center w-12">ลำดับ</th>
-                  <th className="px-4 py-3 text-left">ลำดับการแสดง</th>
+                  <th className="px-4 py-3 text-left">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDisplayOrderSort((prev) =>
+                          prev === null ? "asc" : prev === "asc" ? "desc" : null,
+                        )
+                      }
+                      className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-left font-medium text-stone-600 hover:bg-stone-100 hover:text-stone-900"
+                    >
+                      <span>ลำดับการแสดง</span>
+                      <Icon
+                        icon={
+                          displayOrderSort === null
+                            ? "solar:sort-linear"
+                            : displayOrderSort === "asc"
+                              ? "solar:sort-vertical-linear"
+                              : "solar:sort-vertical-linear"
+                        }
+                        className={`h-3.5 w-3.5 ${displayOrderSort ? "text-primary-600" : "text-stone-400"}`}
+                      />
+                    </button>
+                  </th>
                   <th className="px-4 py-3 text-left">ชื่อ</th>
                   <th className="px-4 py-3 text-left">เพศ</th>
                   <th className="px-4 py-3 text-left">อายุ</th>
@@ -806,11 +840,11 @@ export default function AdminStaffPage() {
 
                 <div className="space-y-1.5">
                   <label className="block text-xs font-medium text-stone-700">
-                    เบอร์โทร <span className="text-rose-500">*</span>
+                    เบอร์โทร {form.id ? null : <span className="text-rose-500">*</span>}
                   </label>
                   <input
                     type="tel"
-                    required
+                    required={!form.id}
                     className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200"
                     value={form.tel}
                     onChange={(e) =>

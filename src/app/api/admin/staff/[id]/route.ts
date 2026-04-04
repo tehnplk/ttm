@@ -20,21 +20,104 @@ export async function PUT(
       );
     }
 
+    const currentEmployee = await prisma.$queryRaw<Array<{
+      id: number;
+      prename: string | null;
+      fname: string | null;
+      lname: string | null;
+      nickname: string | null;
+      sex: string | null;
+      birth: Date | null;
+      agey: number | null;
+      position: number | null;
+      branch_id: number | null;
+      tel: string | null;
+      num_star: number | null;
+      is_active: string | null;
+      image: string | null;
+      employee_number: string | null;
+    }>>`
+      SELECT
+        id,
+        prename,
+        fname,
+        lname,
+        nickname,
+        sex,
+        birth,
+        agey,
+        position,
+        branch_id,
+        tel,
+        num_star,
+        is_active,
+        image,
+        employee_number
+      FROM employee
+      WHERE id = ${employeeId}
+      LIMIT 1
+    `;
+
+    const existingEmployee = currentEmployee[0];
+    if (!existingEmployee) {
+      return NextResponse.json(
+        { error: "Employee not found" },
+        { status: 404 },
+      );
+    }
+
     const body = await request.json();
-    const prename = typeof body.prename === "string" ? body.prename.trim() : "นาง";
-    const fname = typeof body.fname === "string" ? body.fname.trim() : "";
-    const lname = typeof body.lname === "string" ? body.lname.trim() : "";
-    const nickname = typeof body.nickname === "string" ? body.nickname.trim() : null;
-    const sex = typeof body.sex === "string" ? body.sex : "หญิง";
-    const birth = body.birth ? new Date(body.birth) : null;
-    const agey = typeof body.agey === "number" ? body.agey : (typeof body.agey === "string" && body.agey ? parseInt(body.agey, 10) : null);
-    const position = typeof body.position === "number" ? body.position : (typeof body.position === "string" && body.position ? parseInt(body.position, 10) : null);
-    const branch_id = typeof body.branch_id === "number" ? body.branch_id : (typeof body.branch_id === "string" && body.branch_id ? parseInt(body.branch_id, 10) : null);
-    const tel = typeof body.tel === "string" ? body.tel.trim() : null;
-    const num_star = typeof body.num_star === "number" ? body.num_star : (typeof body.num_star === "string" && body.num_star ? parseInt(body.num_star, 10) : null);
-    const is_active = typeof body.is_active === "string" ? body.is_active : "yes";
-    const image = typeof body.image === "string" ? body.image.trim() : null;
-    const employee_number = typeof body.employee_number === "string" ? body.employee_number.trim() : null;
+
+    const prename = typeof body.prename === "string" && body.prename.trim()
+      ? body.prename.trim()
+      : existingEmployee.prename;
+    const fname = typeof body.fname === "string" && body.fname.trim()
+      ? body.fname.trim()
+      : existingEmployee.fname;
+    const lname = typeof body.lname === "string" && body.lname.trim()
+      ? body.lname.trim()
+      : existingEmployee.lname;
+    const nickname = typeof body.nickname === "string"
+      ? body.nickname.trim() || existingEmployee.nickname
+      : existingEmployee.nickname;
+    const sex = typeof body.sex === "string" && body.sex.trim()
+      ? body.sex.trim()
+      : existingEmployee.sex;
+    const birth = typeof body.birth === "string" && body.birth.trim()
+      ? new Date(body.birth)
+      : existingEmployee.birth;
+    const agey = typeof body.agey === "number"
+      ? body.agey
+      : typeof body.agey === "string" && body.agey.trim()
+        ? parseInt(body.agey, 10)
+        : existingEmployee.agey;
+    const position = typeof body.position === "number"
+      ? body.position
+      : typeof body.position === "string" && body.position.trim()
+        ? parseInt(body.position, 10)
+        : existingEmployee.position;
+    const branch_id = typeof body.branch_id === "number"
+      ? body.branch_id
+      : typeof body.branch_id === "string" && body.branch_id.trim()
+        ? parseInt(body.branch_id, 10)
+        : existingEmployee.branch_id;
+    const tel = typeof body.tel === "string"
+      ? body.tel.trim() || existingEmployee.tel
+      : existingEmployee.tel;
+    const num_star = typeof body.num_star === "number"
+      ? body.num_star
+      : typeof body.num_star === "string" && body.num_star.trim()
+        ? parseInt(body.num_star, 10)
+        : existingEmployee.num_star;
+    const is_active = typeof body.is_active === "string" && body.is_active.trim()
+      ? body.is_active.trim()
+      : existingEmployee.is_active;
+    const image = typeof body.image === "string"
+      ? body.image.trim() || existingEmployee.image
+      : existingEmployee.image;
+    const employee_number = typeof body.employee_number === "string"
+      ? body.employee_number.trim() || existingEmployee.employee_number
+      : existingEmployee.employee_number;
 
     if (!fname) {
       return NextResponse.json(
