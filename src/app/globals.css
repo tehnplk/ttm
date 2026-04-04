@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+/* HeroUI + Tailwind v4 config (per docs: https://www.heroui.com/docs/guide/installation) */
+@config "./hero.ts";
+@source "../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
+@custom-variant dark (&:is(.dark *));
+
+/* Tailwind v4 theme configuration */
+@theme {
+  --color-primary-50: #faf5ff;
+  --color-primary-100: #f3e8ff;
+  --color-primary-200: #e9d5ff;
+  --color-primary-300: #d8b4fe;
+  --color-primary-400: #c084fc;
+  --color-primary-500: #a855f7;
+  --color-primary-600: #9333ea;
+  --color-primary-700: #7e22ce;
+  --color-primary-800: #6b21a8;
+  --color-primary-900: #581c87;
+
+  --color-stone-50: #fafaf9;
+  --color-stone-100: #f5f5f4;
+  --color-stone-200: #e7e5e4;
+  --color-stone-300: #d6d3d1;
+  --color-stone-400: #a8a29e;
+  --color-stone-500: #78716c;
+  --color-stone-600: #57534e;
+  --color-stone-700: #44403c;
+  --color-stone-800: #292524;
+  --color-stone-900: #1c1917;
+}
+
+:root {
+  --font-sans: 'Sarabun', var(--font-kanit), var(--font-inter), sans-serif;
+}
+
+/* Apply THSarabunPSK (Sarabun) to all elements */
+* {
+  font-family: 'Sarabun', var(--font-kanit), var(--font-inter), sans-serif !important;
+}
+
+body {
+  font-family: 'Sarabun', var(--font-kanit), var(--font-inter), sans-serif !important;
+}
+
+html {
+  font-family: 'Sarabun', var(--font-kanit), var(--font-inter), sans-serif !important;
+}
+
+/* Hide scrollbar utilities */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+/* Leaflet CSS fixes */
+.leaflet-container {
+  font-family: inherit;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 8px;
+}

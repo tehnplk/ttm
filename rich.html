@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8" />
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@500;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            width: 2500px;
+            height: 843px;
+            /* LINE rich menu size (2500x843 for 3 columns) */
+            font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
+            background: linear-gradient(135deg, #1a5d4a 0%, #2d7a62 50%, #3d8b72 100%);
+        }
+
+        .container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            gap: 0;
+        }
+
+        .col {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .col:not(:last-child) {
+            border-right: 2px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .inner {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+        }
+
+        .icon-box {
+            width: 180px;
+            height: 180px;
+            border-radius: 32px;
+            display: grid;
+            place-items: center;
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+        }
+
+        .icon-box svg {
+            width: 100px;
+            height: 100px;
+            stroke-width: 1.8;
+            fill: none;
+        }
+
+        .title {
+            font-size: 64px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            color: #ffffff;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            white-space: nowrap;
+        }
+
+        .subtitle {
+            font-size: 28px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.9);
+            white-space: nowrap;
+        }
+
+        /* Column 1 - จองคิว (เขียว) */
+        .c1 {
+            background: linear-gradient(160deg, #2d8a6e 0%, #1f6b54 100%);
+        }
+
+        .c1 .icon-box svg {
+            stroke: #1f6b54;
+        }
+
+        /* Column 2 - ประวัติการจอง (ส้มอิฐ) */
+        .c2 {
+            background: linear-gradient(160deg, #c87850 0%, #a85d3c 100%);
+        }
+
+        .c2 .icon-box svg {
+            stroke: #a85d3c;
+        }
+
+        /* Column 3 - คำถามพบบ่อย (ม่วงชมพู) */
+        .c3 {
+            background: linear-gradient(160deg, #9b6b8e 0%, #7d5571 100%);
+        }
+
+        .c3 .icon-box svg {
+            stroke: #7d5571;
+        }
+
+        /* Decorative elements */
+        .col::before {
+            content: "";
+            position: absolute;
+            top: -50%;
+            right: -30%;
+            width: 60%;
+            height: 120%;
+            background: radial-gradient(ellipse, rgba(255, 255, 255, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .col::after {
+            content: "";
+            position: absolute;
+            bottom: -20%;
+            left: -20%;
+            width: 50%;
+            height: 80%;
+            background: radial-gradient(ellipse, rgba(0, 0, 0, 0.1) 0%, transparent 70%);
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- จองคิว -->
+        <div class="col c1">
+            <div class="inner">
+                <div class="icon-box">
+                    <svg viewBox="0 0 24 24">
+                        <rect x="3" y="4" width="18" height="16" rx="2" ry="2" />
+                        <line x1="3" y1="10" x2="21" y2="10" />
+                        <line x1="8" y1="2" x2="8" y2="6" />
+                        <line x1="16" y1="2" x2="16" y2="6" />
+                        <line x1="8" y1="14" x2="8" y2="14.01" />
+                        <line x1="12" y1="14" x2="12" y2="14.01" />
+                        <line x1="16" y1="14" x2="16" y2="14.01" />
+                    </svg>
+                </div>
+                <div class="title">จองคิว</div>
+                <div class="subtitle">นัดหมายรับบริการล่วงหน้า</div>
+            </div>
+        </div>
+
+        <!-- ประวัติการจอง -->
+        <div class="col c2">
+            <div class="inner">
+                <div class="icon-box">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14,2 14,8 20,8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                        <line x1="10" y1="9" x2="8" y2="9" />
+                    </svg>
+                </div>
+                <div class="title">ประวัติการจอง</div>
+                <div class="subtitle">ตรวจสอบคิวและสถานะ</div>
+            </div>
+        </div>
+
+        <!-- คำถามพบบ่อย -->
+        <div class="col c3">
+            <div class="inner">
+                <div class="icon-box">
+                    <svg viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                </div>
+                <div class="title">คำถามพบบ่อย</div>
+                <div class="subtitle">วิธีใช้งานและคำตอบที่คุณต้องการ</div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

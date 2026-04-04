@@ -1,0 +1,158 @@
+// Prisma schema matching ttm.sql database structure
+// This schema is for the legacy database structure
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Employee table (matching employee table in ttm.sql)
+model Employee {
+  id            Int       @id @default(autoincrement())
+  prename       String    @db.VarChar(255)
+  fname         String    @db.VarChar(255)
+  lname         String    @db.VarChar(255)
+  sex           Sex?      @default(หญิง)
+  birth         DateTime? @db.Date
+  agey          Int?
+  position      Int?
+  tel           String?   @db.VarChar(255)
+  num_star      Int?
+  is_active     IsActive? @map("is_active")
+  nickname      String?   @db.VarChar(255)
+  employee_number String? @map("employee_number") @db.VarChar(50)
+  createdAt     DateTime? @map("created_at") @db.DateTime
+  updatedAt     DateTime? @map("updated_at") @db.DateTime
+
+  bookings Booking[]
+
+  @@map("employee")
+}
+
+enum Sex {
+  ชาย
+  หญิง
+}
+
+enum IsActive {
+  no
+  yes
+}
+
+// Booking table (matching booking table in ttm.sql)
+model Booking {
+  id          Int       @id @default(autoincrementcrement())
+  empId       Int       @map("emp_id")
+  bookDate    DateTime  @map("book_date") @db.Date
+  bookTime    String?   @map("book_time") @db.VarChar(5)
+  bookerName  String    @map("booker_name") @db.VarChar(255)
+  bookerTel   String    @map("booker_tel") @db.VarChar(255)
+  note1       String?   @db.VarChar(255)
+  note2       String?   @db.VarChar(255)
+  note3       String?   @db.VarChar(255)
+  note4       String    @default("") @db.VarChar(255)
+  note5       String    @default("") @db.VarChar(255)
+  cid         String?   @db.VarChar(13)
+  lineId      String?   @map("line_id") @db.VarChar(255)
+
+  employee    Employee  @relation(fields: [empId], references: [id])
+
+  @@map("booking")
+}
+
+// Work time table
+model CWorkTime {
+  id        Int       @id @default(autoincrement())
+  empId     Int?      @map("emp_id")
+  workDate  DateTime? @map("work_date") @db.Date
+  beginTime DateTime? @map("begin_time") @db.Time
+  isActive  IsActive? @map("is_active")
+
+  @@map("cwork_time")
+}
+
+// Close dates table
+model CClose {
+  cdate DateTime @id @db.Date
+  note  String?  @db.VarChar(255)
+
+  @@map("cclose")
+}
+
+// Holiday table
+model CHoliday {
+  hdate DateTime @id @db.Date
+  note  String?  @db.VarChar(255)
+
+  @@map("choliday")
+}
+
+// Position table
+model CPosition {
+  id       Int     @id @default(autoincrement())
+  position String? @db.VarChar(255)
+
+  @@map("cposition")
+}
+
+// Stop table
+model CStop {
+  id       Int       @id @default(autoincrement())
+  empId    Int       @map("emp_id")
+  stopDate DateTime  @map("stop_date") @db.Date
+  stopTime String    @map("stop_time") @db.VarChar(5)
+  note1    String?   @db.VarChar(255)
+  note2    String?   @db.VarChar(255)
+  note3    String?   @db.VarChar(255)
+
+  @@map("cstop")
+}
+
+// Employee stop date table
+model EmpStopDate {
+  empId    Int      @map("emp_id")
+  stopDate DateTime @map("stop_date") @db.Date
+
+  @@id([empId, stopDate])
+  @@map("emp_stop_date")
+}
+
+// Line log table
+model LineLog {
+  id        Int       @id @default(autoincrement())
+  lineId    String?   @map("line_id") @db.VarChar(255)
+  message   String?   @db.Text
+  createdAt DateTime? @map("created_at") @db.DateTime
+
+  @@map("line_log")
+}
+
+// View log table
+model ViewLog {
+  id        Int       @id @default(autoincrement())
+  ipAddress String?   @map("ip_address") @db.VarChar(255)
+  viewedAt  DateTime? @map("viewed_at") @db.DateTime
+
+  @@map("view_log")
+}
+
+// FAQ table
+model FAQ {
+  id        Int       @id @default(autoincrement())
+  question  String    @db.VarChar(500)
+  answer    String    @db.Text
+  order     Int       @default(0)
+  is_active IsActive? @default(yes) @map("is_active")
+  createdAt DateTime? @default(now()) @map("created_at") @db.DateTime
+  updatedAt DateTime? @updatedAt @map("updated_at") @db.DateTime
+
+  @@map("faq")
+  @@index([order])
+  @@index([is_active])
+}
+
+

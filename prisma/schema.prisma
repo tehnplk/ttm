@@ -1,0 +1,315 @@
+// Prisma schema matching ttm.sql database structure
+// Updated to match the legacy database structure
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Employee table (matching employee table in ttm.sql)
+model Employee {
+  id        Int       @id @default(autoincrement())
+  prename   String    @db.VarChar(255)
+  fname     String    @db.VarChar(255)
+  lname     String    @db.VarChar(255)
+  sex       String?   @db.VarChar(255) // Database uses enum employee_sex with values "ชาย", "หญิง"
+  birth     DateTime? @db.Date
+  agey      Int?
+  position  Int?
+  tel       String?   @db.VarChar(255)
+  num_star  Int?
+  empIdOld  Int?      @map("emp_id_old")
+  is_active String?   @map("is_active") @db.VarChar(255)
+  createdAt DateTime? @map("created_at") @db.DateTime
+  updatedAt DateTime? @map("updated_at") @db.DateTime
+
+  bookings Booking[]
+
+  @@map("employee")
+}
+
+// Booking table (matching booking table in ttm.sql)
+model Booking {
+  id              Int       @id @default(autoincrement())
+  empId           Int       @map("emp_id")
+  branchId        Int?      @map("branch_id")
+  serviceId       Int?      @map("service_id")
+  price           Decimal?  @db.Decimal(10, 2)
+  bookDate        DateTime  @map("book_date") @db.Date
+  bookTime        String?   @map("book_time") @db.VarChar(255)
+  bookerName      String    @map("booker_name") @db.VarChar(255)
+  bookerTel       String    @map("booker_tel") @db.VarChar(255)
+  note1           String?   @db.VarChar(255)
+  note2           String?   @db.VarChar(255)
+  note3           String?   @db.VarChar(255)
+  note4           String    @default("") @db.VarChar(255)
+  note5           String    @default("") @db.VarChar(255)
+  bookingId       String?   @map("booking_id") @db.VarChar(50)
+  cid             String?   @db.VarChar(13)
+  lineId          String?   @map("line_id") @db.VarChar(255)
+  status          String?   @default("pending") @db.VarChar(50)
+  confirmDatetime DateTime? @map("confirm_datetime") @db.DateTime
+
+  employee Employee @relation(fields: [empId], references: [id])
+  branch   Branch?  @relation(fields: [branchId], references: [id])
+  service  Service? @relation(fields: [serviceId], references: [id])
+
+  @@map("booking")
+}
+
+// Work time table
+model CWorkTime {
+  id        Int       @id @default(autoincrement())
+  empId     Int?      @map("emp_id")
+  workDate  DateTime? @map("work_date") @db.Date
+  beginTime DateTime? @map("begin_time") @db.Time
+  isActive  String?   @map("is_active") @db.VarChar(255)
+
+  @@map("cwork_time")
+}
+
+// Close dates table
+model CClose {
+  cdate DateTime @id @db.Date
+  note  String?  @db.VarChar(255)
+
+  @@map("cclose")
+}
+
+// Holiday table
+model CHoliday {
+  hdate DateTime @id @db.Date
+  note  String?  @db.VarChar(255)
+
+  @@map("choliday")
+}
+
+// Position table
+model CPosition {
+  id       Int     @id @default(autoincrement())
+  position String? @db.VarChar(255)
+
+  @@map("cposition")
+}
+
+// Stop table
+model CStop {
+  id       Int      @id @default(autoincrement())
+  empId    Int      @map("emp_id")
+  stopDate DateTime @map("stop_date") @db.Date
+  stopTime String   @map("stop_time") @db.VarChar(5)
+  note1    String?  @db.VarChar(255)
+  note2    String?  @db.VarChar(255)
+  note3    String?  @db.VarChar(255)
+
+  @@map("cstop")
+}
+
+// Employee stop date table
+model EmpStopDate {
+  empId    Int      @map("emp_id")
+  stopDate DateTime @map("stop_date") @db.Date
+
+  @@id([empId, stopDate])
+  @@map("emp_stop_date")
+}
+
+// Line log table
+model LineLog {
+  id        Int       @id @default(autoincrement())
+  lineId    String?   @map("line_id") @db.VarChar(255)
+  message   String?   @db.Text
+  createdAt DateTime? @map("created_at") @db.DateTime
+
+  @@map("line_log")
+}
+
+// View log table
+model ViewLog {
+  id        Int       @id @default(autoincrement())
+  ipAddress String?   @map("ip_address") @db.VarChar(255)
+  viewedAt  DateTime? @map("viewed_at") @db.DateTime
+
+  @@map("view_log")
+}
+
+// Booking delete log table
+model BookingDeleteLog {
+  id           Int       @id @default(autoincrement())
+  bookingId    Int       @map("booking_id")
+  customerName String    @map("customer_name") @db.VarChar(255)
+  customerPhone String   @map("customer_phone") @db.VarChar(255)
+  bookDate     DateTime  @map("book_date") @db.Date
+  bookTime     String?   @map("book_time") @db.VarChar(255)
+  staffId      Int?      @map("staff_id")
+  staffName    String?   @map("staff_name") @db.VarChar(500)
+  branchId     Int?      @map("branch_id")
+  branchName   String?   @map("branch_name") @db.VarChar(255)
+  serviceId    Int?      @map("service_id")
+  serviceName  String?   @map("service_name") @db.VarChar(255)
+  deletedBy    String    @map("deleted_by") @db.VarChar(255)
+  deletedAt    DateTime  @default(now()) @map("deleted_at") @db.DateTime
+
+  @@map("booking_delete_log")
+  @@index([deletedAt])
+  @@index([deletedBy])
+  @@index([bookingId])
+}
+
+// Branch table
+model Branch {
+  id                Int       @id @default(autoincrement())
+  code              String    @unique @db.VarChar(255)
+  name              String    @db.VarChar(255)
+  location          String    @db.VarChar(500)
+  latitude          Float?    @db.Double
+  longitude         Float?    @db.Double
+  image             String    @default("/placeholder-branch.png") @db.VarChar(500)
+  availableServices String    @default("[]") @db.Text
+  is_active         String?   @default("yes") @map("is_active") @db.VarChar(255)
+  createdAt         DateTime? @default(now()) @map("createdAt") @db.DateTime
+  updatedAt         DateTime? @updatedAt @map("updatedAt") @db.DateTime
+
+  bookings Booking[]
+
+  @@map("Branch")
+}
+
+// Service table
+model Service {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(255)
+  description String    @default("") @db.Text
+  duration    Int       @default(60) // minutes
+  price       Decimal   @default(0) @db.Decimal(10, 2)
+  image       String    @default("/placeholder-service.png") @db.VarChar(500)
+  enabled     String    @default("yes") @db.VarChar(255)
+  createdAt   DateTime? @default(now()) @map("createdAt") @db.DateTime
+  updatedAt   DateTime? @updatedAt @map("updatedAt") @db.DateTime
+
+  bookings Booking[]
+
+  @@map("Service")
+}
+
+// Staff Schedule table
+model StaffSchedule {
+  id        Int       @id @default(autoincrement())
+  staffId   String    @unique @map("staff_id") @db.VarChar(255)
+  offDays   String    @default("[]") @map("offDays") @db.Text
+  busySlots String    @default("{}") @map("busySlots") @db.Text
+  createdAt DateTime? @default(now()) @map("created_at") @db.DateTime
+  updatedAt DateTime? @updatedAt @map("updated_at") @db.DateTime
+
+  @@map("StaffSchedule")
+}
+
+// Staff Holiday table
+model StaffHoliday {
+  id          Int       @id @default(autoincrement())
+  staffId     String    @map("staff_id") @db.VarChar(255)
+  branchId    Int?      @map("branch_id")
+  holidayDate DateTime  @map("holiday_date") @db.Date
+  note        String?   @db.VarChar(500)
+  createdAt   DateTime? @default(now()) @map("created_at") @db.DateTime
+  updatedAt   DateTime? @updatedAt @map("updated_at") @db.DateTime
+
+  @@map("staffholiday")
+}
+
+// Shop configuration table
+model ShopConfig {
+  id              String  @id @db.VarChar(191)
+  openTime        Int
+  closeTime       Int
+  holidays        String  @default("[]") @db.Text
+  slotInterval    Int
+  bookingEnabled  String  @default("yes") @map("booking_enabled") @db.VarChar(255)
+  bookingMessage  String? @map("booking_message") @db.Text
+
+  @@map("ShopConfig")
+}
+
+// Opening Hours table
+model OpeningHours {
+  id        Int       @id @default(autoincrement())
+  branchId  String    @map("branch_id") @db.VarChar(255)
+  startTime String    @map("start_time") @db.VarChar(5)
+  endTime   String    @map("end_time") @db.VarChar(5)
+  createdAt DateTime? @default(now()) @map("created_at") @db.DateTime
+  updatedAt DateTime? @updatedAt @map("updated_at") @db.DateTime
+
+  @@map("opening_hours")
+}
+
+// Notification Settings table
+model NotificationSettings {
+  id              Int       @id @default(autoincrement())
+  enabled         String    @default("yes") @db.VarChar(255)
+  notificationTime String   @default("09:00") @map("notification_time") @db.VarChar(5)
+  messageTemplate String?   @map("message_template") @db.Text
+  daysBefore      Int       @default(1) @map("days_before")
+  createdAt       DateTime? @default(now()) @map("created_at") @db.DateTime
+  updatedAt       DateTime? @updatedAt @map("updated_at") @db.DateTime
+
+  @@map("notification_settings")
+}
+
+// Broadcast Settings table
+model BroadcastSettings {
+  id           Int       @id @default(autoincrement())
+  broadcastDate DateTime @map("broadcast_date") @db.Date
+  broadcastTime String   @map("broadcast_time") @db.VarChar(5)
+  message      String   @db.Text
+  branchIds    String   @default("[]") @map("branch_ids") @db.Text
+  enabled      String   @default("yes") @db.VarChar(255)
+  sent         String   @default("no") @db.VarChar(255)
+  sentAt       DateTime? @map("sent_at") @db.DateTime
+  createdAt    DateTime? @default(now()) @map("created_at") @db.DateTime
+  updatedAt    DateTime? @updatedAt @map("updated_at") @db.DateTime
+
+  @@index([broadcastDate])
+  @@index([broadcastDate, broadcastTime])
+  @@index([enabled, sent])
+  @@map("broadcast_settings")
+}
+
+// Admin Users table for authentication
+model AdminUser {
+  id          Int       @id @default(autoincrement())
+  providerId  String    @unique @map("provider_id") @db.VarChar(255)
+  providerType String  @default("provider-id") @map("provider_type") @db.VarChar(50)
+  name        String    @db.VarChar(255)
+  email       String?   @db.VarChar(255)
+  hashCid     String?   @map("hash_cid") @db.VarChar(255) // Hash CID from Provider ID
+  role        String    @default("staff") @db.VarChar(50)
+  isActive    String    @default("yes") @map("is_active") @db.VarChar(255)
+  status      String    @default("pending") @db.VarChar(50) // pending, approved, rejected
+  profileData String?   @map("profile_data") @db.Text // Store Provider ID profile JSON
+  lastLogin   DateTime? @map("last_login") @db.DateTime
+  createdAt   DateTime? @default(now()) @map("created_at") @db.DateTime
+  updatedAt   DateTime? @updatedAt @map("updated_at") @db.DateTime
+
+  @@index([providerId])
+  @@index([providerType])
+  @@index([isActive])
+  @@index([status])
+  @@index([hashCid])
+  @@map("admin_users")
+}
+
+model Faq {
+  id        Int       @id @default(autoincrement())
+  question  String    @db.Text
+  answer    String    @db.Text
+  sortOrder Int       @default(0) @map("sort_order")
+  isActive  String    @default("yes") @map("is_active") @db.VarChar(10)
+  createdAt DateTime? @default(now()) @map("created_at") @db.DateTime
+  updatedAt DateTime? @updatedAt @map("updated_at") @db.DateTime
+
+  @@map("faq")
+}

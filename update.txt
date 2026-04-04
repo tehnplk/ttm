@@ -1,0 +1,84 @@
+-- เพิ่มคอลัมน์ branch_ids ในตาราง broadcast_settings
+ALTER TABLE broadcast_settings 
+ADD COLUMN branch_ids TEXT DEFAULT '';
+
+-- อัปเดตข้อมูลเก่าให้มีค่า default
+UPDATE broadcast_settings 
+SET branch_ids = '[]' 
+WHERE branch_ids IS NULL;
+-- Add branch_ids column to broadcast_settings table
+ALTER TABLE broadcast_settings 
+ADD COLUMN branch_ids TEXT DEFAULT '' COMMENT 'JSON array of branch IDs to send broadcast to';
+
+-- Update existing records to have empty array as default
+UPDATE broadcast_settings 
+SET branch_ids = '[]' 
+WHERE branch_ids IS NULL;
+
+-- Add booking_id column to booking table
+ALTER TABLE booking 
+ADD COLUMN booking_id VARCHAR(50) NULL COMMENT 'Sequential booking ID (e.g., BK-000001)';
+
+-- Create index for faster lookups
+CREATE INDEX idx_booking_id ON booking(booking_id);
+
+
+-- Migration: Add booking_id column to booking table
+-- Date: 2025-01-XX
+-- Description: เพิ่มคอลัมน์ booking_id ในตาราง booking เพื่อเก็บเลข booking ID ที่รันต่อเนื่องไม่ซ้ำกัน
+
+-- Add booking_id column to booking table
+ALTER TABLE booking 
+ADD COLUMN booking_id VARCHAR(50) NULL COMMENT 'Sequential booking ID (e.g., BK-000001)';
+
+-- Create index for faster lookups
+CREATE INDEX idx_booking_id ON booking(booking_id);
+
+
+
+
+.env
+NEXTAUTH_URL=http://localhost:3000
+
+
+
+2025-12-11   ict
+-- Add nickname and employee_number columns to employee table
+-- Migration: add_nickname_and_employee_number_to_employee
+
+ALTER TABLE employee 
+ADD COLUMN nickname VARCHAR(255) NULL AFTER is_active,
+ADD COLUMN employee_number VARCHAR(50) NULL AFTER nickname;
+
+
+
+//คำถามพบบ่อย
+-- Create FAQ table for managing frequently asked questions
+-- Migration: create_faq_table
+
+CREATE TABLE IF NOT EXISTS `faq` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `question` VARCHAR(500) NOT NULL COMMENT 'คำถาม',
+  `answer` TEXT NOT NULL COMMENT 'คำตอบ',
+  `order` INT DEFAULT 0 COMMENT 'ลำดับการแสดงผล',
+  `is_active` VARCHAR(10) DEFAULT 'yes' COMMENT 'สถานะ (yes/no)',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_order` (`order`),
+  INDEX `idx_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ตารางคำถามพบบ่อย';
+
+
+-- Insert default FAQ items
+-- Migration: insert_default_faqs
+
+INSERT INTO `faq` (`question`, `answer`, `order`, `is_active`, `created_at`, `updated_at`) VALUES
+('วิธีการจองคิว?', '1. คลิกปุ่ม "จองคิว" เพื่อเข้าสู่ระบบจองคิว\n2. เลือกวันที่และเวลาที่ต้องการ\n3. เลือกพนักงานนวดที่ต้องการ\n4. กรอกข้อมูลส่วนตัว\n5. ยืนยันการจอง', 1, 'yes', NOW(), NOW()),
+
+('ดูประวัติการจองได้อย่างไร?', 'คุณสามารถดูประวัติการจองได้โดย:\n- คลิกปุ่ม "ประวัติการจอง" ในเมนูหลัก\n- หรือพิมพ์ "ประวัติการจอง" ในแชท\nระบบจะแสดงรายการจองทั้งหมดของคุณ พร้อมรายละเอียดวันที่ เวลา สาขา และพนักงาน', 2, 'yes', NOW(), NOW()),
+
+('ยกเลิกการจองได้หรือไม่?', 'คุณสามารถยกเลิกการจองได้โดย:\n- ติดต่อเจ้าหน้าที่เพื่อแจ้งความประสงค์ยกเลิก\n- หรือเข้าไปดูรายละเอียดการจองในประวัติการจอง\nกรุณาแจ้งล่วงหน้าก่อนวันนัดอย่างน้อย 1 วัน', 3, 'yes', NOW(), NOW());
+
+
+
+
