@@ -86,6 +86,9 @@ export default function AdminStaffPage() {
     employee_number: "",
   });
 
+  const filteredActiveCount = filteredStaff.filter((s) => s.is_active === "yes").length;
+  const filteredInactiveCount = filteredStaff.filter((s) => s.is_active !== "yes").length;
+
   async function loadStaff() {
     try {
       setLoading(true);
@@ -478,6 +481,16 @@ export default function AdminStaffPage() {
             </button>
           )}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">
+        <span>
+          แสดงผล {filteredStaff.length} รายการ จากทั้งหมด {staff.length} รายการ
+        </span>
+        <span className="flex items-center gap-3">
+          <span>ใช้งาน {filteredActiveCount}</span>
+          <span>ไม่ใช้งาน {filteredInactiveCount}</span>
+        </span>
       </div>
 
       {/* ตารางพนักงาน */}

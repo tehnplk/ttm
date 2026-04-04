@@ -53,6 +53,7 @@ type StaffOption = {
   name: string;
   branchId: number | null;
   employeeNumber?: string | null;
+  isActive: boolean;
 };
 
 export default function AdminBookingsPage() {
@@ -171,11 +172,12 @@ export default function AdminBookingsPage() {
             id: s.id, 
             name,
             branchId: s.branch_id ? Number(s.branch_id) : null,
-            employeeNumber: s.employee_number || null
+            employeeNumber: s.employee_number || null,
+            isActive: s.is_active === 'yes'
           };
-        }) || [];
+        })?.filter((s: StaffOption) => s.isActive) || [];
         setAllStaff(staffList);
-        setStaff(staffList); // Initially show all staff
+        setStaff(staffList); // Initially show all active staff
       }
     } catch (err) {
       console.error("Failed to load options", err);
@@ -1534,7 +1536,7 @@ export default function AdminBookingsPage() {
               <table className="min-w-full border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-100/50">
-                    <th className="px-3 py-2 text-left font-semibold text-stone-700">No</th>
+                    <th className="px-3 py-2 text-left font-semibold text-stone-700">#</th>
                     <th className="px-3 py-2 text-left font-semibold text-stone-700">พนักงาน</th>
                     {openingHours.length > 0 ? (
                       openingHours.map((hour, index) => {
@@ -1662,7 +1664,7 @@ export default function AdminBookingsPage() {
                     
                     // Create a map of all staff (including those without bookings)
                     // Only show staff if branch is selected
-                    const allStaffMap = new Map<string, { id: string; name: string; bookings: BookingRow[] }>();
+                    const allStaffMap = new Map<string, { id: string; name: string; employeeNumber: string | null; bookings: BookingRow[] }>();
                     
                     // Only add staff if branch is selected
                     if (selectedBranchId) {
@@ -1671,6 +1673,7 @@ export default function AdminBookingsPage() {
                         allStaffMap.set(s.id, {
                           id: s.id,
                           name: s.name,
+                          employeeNumber: s.employeeNumber || null,
                           bookings: []
                         });
                       });
@@ -1685,6 +1688,7 @@ export default function AdminBookingsPage() {
                         allStaffMap.set(booking.staffId, {
                           id: booking.staffId,
                           name: booking.staffName || 'ไม่ระบุ',
+                          employeeNumber: null,
                           bookings: [booking]
                         });
                       }
@@ -1814,195 +1818,178 @@ export default function AdminBookingsPage() {
                       console.log(`[View2] Total bookings in staffEntries: ${totalBookingsInEntries}`);
                     }
                     
-                    return staffEntries.map(([staffId, staffData], index) => {
-                        const staffName = staffData.name;
-                        const staffBookings = staffData.bookings;
-                        const isOnHoliday = staffHolidays.has(staffId);
-                        
-                        // Debug log for each staff's bookings
-                        if (selectedDate === '2026-01-10' && staffBookings.length > 0) {
-                          console.log(`[View2] Staff ${staffName} (${staffId}) has ${staffBookings.length} bookings:`, staffBookings.map(b => ({
-                            id: b.id,
-                            customerName: b.customerName,
-                            time: b.time
-                          })));
-                        }
+                    return staffEntries.map(([staffId, staffData]) => {
+                      const staffName = staffData.name;
+                      const staffBookings = staffData.bookings;
+                      const isOnHoliday = staffHolidays.has(staffId);
 
-                        return (
-                          <tr key={staffId} className="border-b border-stone-100 hover:bg-stone-50/50">
-                            <td className="px-3 py-2 text-center text-stone-600">{index + 1}</td>
-                            <td className="px-3 py-2 font-medium text-stone-800 bg-stone-50/50">{staffName}</td>
-                            {timeSlots.map((slot, slotIndex) => {
-                              // If staff is on holiday, show "off" for all time slots
-                              if (isOnHoliday) {
-                                return (
-                                  <td key={slotIndex} className="px-2 py-2 align-top">
-                                    <div className="rounded-lg border shadow-sm p-2.5 bg-red-50 border-red-300">
-                                      <div className="font-semibold text-xs leading-tight text-red-900">
-                                        off
-                                      </div>
+                      return (
+                        <tr key={staffId} className="border-b border-stone-100 hover:bg-stone-50/50">
+                          <td className="px-3 py-2 text-center text-stone-600 font-mono">
+                            {staffData.employeeNumber || '-'}
+                          </td>
+                          <td className="px-3 py-2 font-medium text-stone-800 bg-stone-50/50">{staffName}</td>
+                          {timeSlots.map((slot, slotIndex) => {
+                            // If staff is on holiday, show "off" for all time slots
+                            if (isOnHoliday) {
+                              return (
+                                <td key={slotIndex} className="px-2 py-2 align-top">
+                                  <div className="rounded-lg border shadow-sm p-2.5 bg-red-50 border-red-300">
+                                    <div className="font-semibold text-xs leading-tight text-red-900">
+                                      off
                                     </div>
-                                  </td>
-                                );
-                              }
+                                  </div>
+                                </td>
+                              );
+                            }
 
-                              // Find booking for this time slot
-                              const booking = staffBookings.find(b => {
-                                const parsedTime = parseBookingTime(b.time);
-                                if (!parsedTime) {
-                                  if (selectedDate === '2026-01-10' && staffId === staffData.id) {
-                                    console.log(`[View2] Booking ${b.id} (${b.customerName}) - Cannot parse time: "${b.time}"`);
-                                  }
-                                  return false;
-                                }
-                                
-                                // Normalize both times for comparison (remove extra spaces)
-                                const normalizedParsed = parsedTime.trim().replace(/\s+/g, ' ');
-                                const normalizedSlot = slot.trim().replace(/\s+/g, ' ');
-                                
-                                // Exact match
-                                const exactMatch = normalizedParsed === normalizedSlot;
-                                if (exactMatch) return true;
-                                
-                                // Also check if times overlap (start time matches)
-                                const parsedParts = normalizedParsed.split(/\s*-\s*/);
-                                const slotParts = normalizedSlot.split(/\s*-\s*/);
-                                const parsedStartTime = parsedParts[0]?.trim();
-                                const slotStartTime = slotParts[0]?.trim();
-                                
-                                if (parsedStartTime && slotStartTime && parsedStartTime === slotStartTime) {
-                                  return true;
-                                }
-                                
-                                if (selectedDate === '2026-01-10' && staffId === staffData.id) {
-                                  console.log(`[View2] Booking ${b.id} (${b.customerName}) - Time "${normalizedParsed}" does not match slot "${normalizedSlot}"`);
-                                }
-                                
+                            // Find booking for this time slot
+                            const booking = staffBookings.find(b => {
+                              const parsedTime = parseBookingTime(b.time);
+                              if (!parsedTime) {
                                 return false;
-                              });
+                              }
 
-                              // Filter by search
-                              if (booking) {
-                                if (searchBooker) {
-                                  const q = searchBooker.toLowerCase();
-                                  const nameMatch = booking.customerName.toLowerCase().includes(q);
-                                  const phoneMatch = (booking.customerPhone || '').toLowerCase().includes(q);
-                                  if (!nameMatch && !phoneMatch) {
-                                    return (
-                                      <td key={slotIndex} className="px-2 py-2 text-center text-stone-300">-</td>
-                                    );
-                                  }
+                              // Normalize both times for comparison (remove extra spaces)
+                              const normalizedParsed = parsedTime.trim().replace(/\s+/g, ' ');
+                              const normalizedSlot = slot.trim().replace(/\s+/g, ' ');
+
+                              // Exact match
+                              const exactMatch = normalizedParsed === normalizedSlot;
+                              if (exactMatch) return true;
+
+                              // Also check if times overlap (start time matches)
+                              const parsedParts = normalizedParsed.split(/\s*-\s*/);
+                              const slotParts = normalizedSlot.split(/\s*-\s*/);
+                              const parsedStartTime = parsedParts[0]?.trim();
+                              const slotStartTime = slotParts[0]?.trim();
+
+                              if (parsedStartTime && slotStartTime && parsedStartTime === slotStartTime) {
+                                return true;
+                              }
+
+                              return false;
+                            });
+
+                            // Filter by search
+                            if (booking) {
+                              if (searchBooker) {
+                                const q = searchBooker.toLowerCase();
+                                const nameMatch = booking.customerName.toLowerCase().includes(q);
+                                const phoneMatch = (booking.customerPhone || '').toLowerCase().includes(q);
+                                if (!nameMatch && !phoneMatch) {
+                                  return (
+                                    <td key={slotIndex} className="px-2 py-2 text-center text-stone-300">-</td>
+                                  );
+                                }
+                              }
+
+                              const isConfirmed = booking.status === "completed" || booking.confirmDatetime !== null;
+                              const isOff = booking.customerName.toLowerCase() === "off";
+                              const isFromLine = booking.lineId !== null || booking.note1 === "online";
+                              const isFromAdmin = booking.note1?.startsWith("admin:");
+
+                              // Color priority: off > LINE > admin > default (confirmed uses original color with checkmark)
+                              const getBookingColors = () => {
+                                if (isOff) {
+                                  return {
+                                    bg: "bg-red-50 border-red-300 hover:bg-red-100 hover:border-red-400",
+                                    title: "text-red-900",
+                                    phone: "text-red-800"
+                                  };
+                                }
+                                if (isFromLine) {
+                                  return {
+                                    bg: "bg-violet-50 border-violet-300 hover:bg-violet-100 hover:border-violet-400",
+                                    title: "text-violet-900",
+                                    phone: "text-violet-800"
+                                  };
+                                }
+                                if (isFromAdmin) {
+                                  return {
+                                    bg: "bg-amber-50 border-amber-300 hover:bg-amber-100 hover:border-amber-400",
+                                    title: "text-amber-900",
+                                    phone: "text-amber-800"
+                                  };
                                 }
 
-                                const isConfirmed = booking.status === "completed" || booking.confirmDatetime !== null;
-                                const isOff = booking.customerName.toLowerCase() === "off";
-                                const isFromLine = booking.lineId !== null || booking.note1 === "online";
-                                const isFromAdmin = booking.note1?.startsWith("admin:");
-                                
-                                // Color priority: off > LINE > admin > default (confirmed uses original color with checkmark)
-                                const getBookingColors = () => {
-                                  if (isOff) {
-                                    return {
-                                      bg: "bg-red-50 border-red-300 hover:bg-red-100 hover:border-red-400",
-                                      title: "text-red-900",
-                                      phone: "text-red-800"
-                                    };
-                                  }
-                                  if (isFromLine) {
-                                    return {
-                                      bg: "bg-violet-50 border-violet-300 hover:bg-violet-100 hover:border-violet-400",
-                                      title: "text-violet-900",
-                                      phone: "text-violet-800"
-                                    };
-                                  }
-                                  if (isFromAdmin) {
-                                    return {
-                                      bg: "bg-amber-50 border-amber-300 hover:bg-amber-100 hover:border-amber-400",
-                                      title: "text-amber-900",
-                                      phone: "text-amber-800"
-                                    };
-                                  }
-                                  // Default (pending, unknown source)
-                                  return {
-                                    bg: "bg-emerald-50 border-emerald-300 hover:bg-emerald-100 hover:border-emerald-400",
-                                    title: "text-emerald-900",
-                                    phone: "text-emerald-800"
-                                  };
+                                return {
+                                  bg: "bg-emerald-50 border-emerald-300 hover:bg-emerald-100 hover:border-emerald-400",
+                                  title: "text-emerald-900",
+                                  phone: "text-emerald-800"
                                 };
-                                
-                                const colors = getBookingColors();
-                                
-                                return (
-                                  <td key={slotIndex} className="px-2 py-2 align-top">
-                                    <div 
-                                      onClick={() => {
-                                        if (!submitting) {
-                                          setSelectedBooking(booking);
-                                          setShowBookingActionModal(true);
-                                        }
-                                      }}
-                                      className={`relative rounded-lg border shadow-sm p-2.5 cursor-pointer transition-colors ${colors.bg} ${submitting ? "opacity-50 cursor-not-allowed" : ""}`}
-                                      title="คลิกเพื่อจัดการการจอง"
-                                    >
-                                      {isConfirmed && (
-                                        <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center shadow-sm border-2 border-white">
-                                          <span className="text-white text-[10px] font-bold">✓</span>
-                                        </div>
-                                      )}
-                                      <div className={`font-semibold mb-1 text-sm leading-tight ${colors.title}`}>
-                                        {booking.customerName}
-                                      </div>
-                                      <div className={`font-mono text-xs font-medium ${colors.phone}`}>
-                                        {booking.customerPhone}
-                                      </div>
-                                    </div>
-                                  </td>
-                                );
-                              } else {
-                                // Empty slot - make it clickable to add booking
-                                return (
-                                  <td 
-                                    key={slotIndex} 
-                                    className="px-2 py-2 text-center text-stone-300 cursor-pointer hover:bg-primary-50 hover:text-primary-600 transition-colors group relative"
+                              };
+
+                              const colors = getBookingColors();
+
+                              return (
+                                <td key={slotIndex} className="px-2 py-2 align-top">
+                                  <div 
                                     onClick={() => {
-                                      if (!selectedBranchId) {
-                                        alert('กรุณาเลือกสาขาก่อน');
-                                        return;
+                                      if (!submitting) {
+                                        setSelectedBooking(booking);
+                                        setShowBookingActionModal(true);
                                       }
-                                      
-                                      // Find the time slot ID from openingHours
-                                      const timeSlotId = openingHours[slotIndex] 
-                                        ? `t-${slotIndex}-${openingHours[slotIndex].startTime}-${openingHours[slotIndex].endTime}`
-                                        : '';
-                                      
-                                      // Auto-select first service if available
-                                      const defaultServiceId = services.length > 0 ? services[0].id : "";
-                                      
-                                      // Set form with selected date, time, branch, staff, and default service
-                                      setForm({
-                                        id: "",
-                                        branchId: selectedBranchId,
-                                        serviceId: defaultServiceId,
-                                        staffId: staffId,
-                                        date: selectedDate,
-                                        time: timeSlotId,
-                                        customerName: "",
-                                        customerPhone: "",
-                                        status: "confirmed",
-                                      });
-                                      setError(null);
-                                      setShowModal(true);
                                     }}
-                                    title={`คลิกเพื่อเพิ่มการจอง\nวันที่: ${new Date(selectedDate).toLocaleDateString('th-TH')}\nเวลา: ${slot}`}
+                                    className={`relative rounded-lg border shadow-sm p-2.5 cursor-pointer transition-colors ${colors.bg} ${submitting ? "opacity-50 cursor-not-allowed" : ""}`}
+                                    title="คลิกเพื่อจัดการการจอง"
                                   >
-                                    <span className="text-stone-400 group-hover:text-primary-600 group-hover:font-bold transition-all">+</span>
-                                  </td>
-                                );
-                              }
-                            })}
-                          </tr>
-                        );
-                      });
+                                    {isConfirmed && (
+                                      <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center shadow-sm border-2 border-white">
+                                        <span className="text-white text-[10px] font-bold">✓</span>
+                                      </div>
+                                    )}
+                                    <div className={`font-semibold mb-1 text-sm leading-tight ${colors.title}`}>
+                                      {booking.customerName}
+                                    </div>
+                                    <div className={`font-mono text-xs font-medium ${colors.phone}`}>
+                                      {booking.customerPhone}
+                                    </div>
+                                  </div>
+                                </td>
+                              );
+                            }
+
+                            // Empty slot - make it clickable to add booking
+                            return (
+                              <td 
+                                key={slotIndex} 
+                                className="px-2 py-2 text-center text-stone-300 cursor-pointer hover:bg-primary-50 hover:text-primary-600 transition-colors group relative"
+                                onClick={() => {
+                                  if (!selectedBranchId) {
+                                    alert('กรุณาเลือกสาขาก่อน');
+                                    return;
+                                  }
+
+                                  const timeSlotId = openingHours[slotIndex] 
+                                    ? `t-${slotIndex}-${openingHours[slotIndex].startTime}-${openingHours[slotIndex].endTime}`
+                                    : '';
+
+                                  const defaultServiceId = services.length > 0 ? services[0].id : "";
+
+                                  setForm({
+                                    id: "",
+                                    branchId: selectedBranchId,
+                                    serviceId: defaultServiceId,
+                                    staffId: staffId,
+                                    date: selectedDate,
+                                    time: timeSlotId,
+                                    customerName: "",
+                                    customerPhone: "",
+                                    status: "confirmed",
+                                  });
+                                  setError(null);
+                                  setShowModal(true);
+                                }}
+                                title={`คลิกเพื่อเพิ่มการจอง\nวันที่: ${new Date(selectedDate).toLocaleDateString('th-TH')}\nเวลา: ${slot}`}
+                              >
+                                <span className="text-stone-400 group-hover:text-primary-600 group-hover:font-bold transition-all">+</span>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    });
                   })()}
                 </tbody>
               </table>
