@@ -53,6 +53,7 @@ model Booking {
   lineId          String?   @map("line_id") @db.VarChar(255)
   status          String?   @default("pending") @db.VarChar(50)
   confirmDatetime DateTime? @map("confirm_datetime") @db.DateTime
+  createdAt       DateTime? @map("created_at") @db.DateTime
 
   employee Employee @relation(fields: [empId], references: [id])
   branch   Branch?  @relation(fields: [branchId], references: [id])

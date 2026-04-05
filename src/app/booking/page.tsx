@@ -207,6 +207,7 @@ function BookingPageContent() {
         return (
           <DateSelection
             selectedDate={bookingState.date}
+            branchId={bookingState.branch?.id}
             onSelect={(date) => {
               if (!bookingEnabled) {
                 alert(bookingMessage || 'ขณะนี้ระบบจองปิดใช้งานชั่วคราว กรุณารอสักครู่');
