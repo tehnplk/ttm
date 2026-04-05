@@ -308,15 +308,15 @@ export async function POST(request: NextRequest) {
     // Format booking ID (e.g., BK-000001, BK-000002, etc.)
     const bookingId = `BK-${String(nextBookingNumber).padStart(6, '0')}`;
     
-    // Save current date and time in note5 when booking is created
-    // Format: YYYY-MM-DD HH:mm:ss
+    // Save current date and time in Thai timezone (UTC+7)
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const thaiDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+    const year = thaiDate.getFullYear();
+    const month = String(thaiDate.getMonth() + 1).padStart(2, '0');
+    const day = String(thaiDate.getDate()).padStart(2, '0');
+    const hours = String(thaiDate.getHours()).padStart(2, '0');
+    const minutes = String(thaiDate.getMinutes()).padStart(2, '0');
+    const seconds = String(thaiDate.getSeconds()).padStart(2, '0');
     const bookingCreatedAt = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 
     // Create booking in database using raw SQL to preserve exact date
