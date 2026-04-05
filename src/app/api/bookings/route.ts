@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
         INSERT INTO booking (
           emp_id, branch_id, service_id, price, book_date, book_time,
           booker_name, booker_tel, note1, note2, note3, note4, note5,
-          booking_id, cid, line_id
+          booking_id, cid, line_id, created_at
         ) VALUES (
           ${empId},
           ${branchIdNum && !isNaN(branchIdNum) ? branchIdNum : null},
@@ -345,7 +345,8 @@ export async function POST(request: NextRequest) {
           ${bookingCreatedAt},
           ${bookingId},
           ${null},
-          ${userId || null}
+          ${userId || null},
+          ${bookingCreatedAt}
         )
       `;
       
