@@ -47,6 +47,9 @@ phbookingmedth_dump_*.sql
 # trash
 .trash/
 
+# claude
+.claude/
+
 # playwright temp artifacts
 .playwright-cli/
 test-results/
