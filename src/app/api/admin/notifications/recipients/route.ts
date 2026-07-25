@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
         id: booking.id,
         bookingCode: booking.booking_id,
         bookerName: booking.booker_name,
+        bookerTel: booking.booker_tel,
         dateLabel: formatBookingDate(booking.book_date),
         timeLabel: formatBookingTime(booking.book_time),
         branchName: booking.branch_name,

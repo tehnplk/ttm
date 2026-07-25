@@ -15,6 +15,7 @@ interface Recipient {
   id: number;
   bookingCode: string | null;
   bookerName: string;
+  bookerTel: string | null;
   dateLabel: string;
   timeLabel: string;
   branchName: string | null;
@@ -453,6 +454,11 @@ export default function NotificationSettingsPage() {
                         <div className="flex flex-wrap items-center gap-x-2">
                           <span className="text-sm font-semibold text-stone-900">
                             {recipient.bookerName}
+                            {recipient.bookerTel && (
+                              <span className="ml-1 font-normal text-stone-500">
+                                ({recipient.bookerTel})
+                              </span>
+                            )}
                           </span>
                           {recipient.bookingCode && (
                             <span className="text-[11px] text-stone-400">
