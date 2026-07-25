@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import {
+  fetchNotifiableBookings,
+  formatBookingDate,
+  formatBookingTime,
+} from "@/lib/notification-targets";
 
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const BOOKING_BASE_URL = process.env.NEXT_PUBLIC_BOOKING_URL || "https://bee04d1d0eb3.ngrok-free.app";
@@ -324,7 +329,19 @@ export async function POST(request: NextRequest) {
   try {
     // Public endpoint: no authentication required
 
-
+    // Optional single-recipient mode (used by the admin test send).
+    // Without a bookingId this is the scheduled run: everyone on the target date.
+    let bookingId: number | undefined;
+    try {
+      const body = await request.json();
+      const rawId = body?.bookingId;
+      const parsed = typeof rawId === "number" ? rawId : parseInt(rawId, 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        bookingId = parsed;
+      }
+    } catch {
+      // No body (cron trigger) - fall through to the full run
+    }
 
     // Get notification settings
     const settings = await prisma.$queryRaw<Array<{
@@ -338,7 +355,9 @@ export async function POST(request: NextRequest) {
       LIMIT 1
     `;
 
-    if (settings.length === 0 || settings[0].enabled !== "yes") {
+    // The enabled switch guards the scheduled run only - an explicit test send
+    // to one chosen person stays available while notifications are off
+    if (!bookingId && (settings.length === 0 || settings[0].enabled !== "yes")) {
       return NextResponse.json({
         success: true,
         message: "Notifications are disabled",
@@ -347,58 +366,16 @@ export async function POST(request: NextRequest) {
     }
 
     const setting = settings[0];
-    const daysBefore = setting.days_before || 1;
-    const messageTemplate = setting.message_template || 
-      "สวัสดีครับ คุณ{name} มีนัดในวันพรุ่งนี้ (วันที่ {date}) เวลา {time} ที่ {branch} กรุณามาตามเวลานัดหมาย";
+    const daysBefore = setting?.days_before || 1;
 
-    // Calculate target date (today + daysBefore)
-    const targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() + daysBefore);
-    targetDate.setHours(0, 0, 0, 0);
-    const nextDay = new Date(targetDate);
-    nextDay.setDate(nextDay.getDate() + 1);
-
-    // Get bookings for target date with related data
-    const bookings = await prisma.$queryRaw<Array<{
-      id: number;
-      booker_name: string;
-      booker_tel: string;
-      book_date: Date;
-      book_time: string | null;
-      line_id: string | null;
-      branch_name: string | null;
-      service_name: string | null;
-      employee_name: string | null;
-      booking_id: string | null;
-      status: string | null;
-    }>>`
-      SELECT 
-        b.id,
-        b.booker_name,
-        b.booker_tel,
-        b.book_date,
-        b.book_time,
-        b.line_id,
-        br.name as branch_name,
-        s.name as service_name,
-        CONCAT(COALESCE(e.prename, ''), COALESCE(e.fname, ''), ' ', COALESCE(e.lname, '')) as employee_name,
-        COALESCE(b.booking_id, CONCAT('BK-', LPAD(b.id, 6, '0'))) as booking_id,
-        b.status
-      FROM booking b
-      LEFT JOIN Branch br ON b.branch_id = br.id
-      LEFT JOIN Service s ON b.service_id = s.id
-      LEFT JOIN employee e ON b.emp_id = e.id
-      WHERE DATE(b.book_date) = DATE(${nextDay})
-        AND b.line_id IS NOT NULL
-        AND b.line_id != ''
-        AND (b.status IS NULL OR b.status = 'pending' OR b.status = 'confirmed')
-      ORDER BY b.book_time ASC
-    `;
+    const bookings = await fetchNotifiableBookings({ daysBefore, bookingId });
 
     if (bookings.length === 0) {
       return NextResponse.json({
         success: true,
-        message: "No bookings to notify",
+        message: bookingId
+          ? "ไม่พบรายการจองที่เลือก หรือรายการนี้ไม่เข้าเงื่อนไขการแจ้งเตือนแล้ว"
+          : "No bookings to notify",
         sent: 0,
       });
     }
@@ -410,28 +387,11 @@ export async function POST(request: NextRequest) {
     for (const booking of bookings) {
       if (!booking.line_id) continue;
 
-      // Format date
-      const bookDate = booking.book_date instanceof Date 
-        ? booking.book_date 
+      const bookDate = booking.book_date instanceof Date
+        ? booking.book_date
         : new Date(booking.book_date);
-      const dateStr = bookDate.toLocaleDateString("th-TH", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-
-      // Format time - extract from time slot ID or use as is
-      let timeStr = booking.book_time || "ไม่ระบุ";
-      if (timeStr.startsWith("t-")) {
-        // Extract time from time slot ID: "t-1-10:30-12:30" -> "10:30 - 12:30"
-        const parts = timeStr.split("-");
-        if (parts.length >= 4) {
-          timeStr = `${parts[2]} - ${parts[3]}`;
-        }
-      } else if (timeStr.includes(" - ")) {
-        // Already in correct format
-        timeStr = timeStr;
-      }
+      const dateStr = formatBookingDate(bookDate);
+      const timeStr = formatBookingTime(booking.book_time);
 
       // Create Flex Message
       const flexMessage = createNotificationFlexMessage({
@@ -474,7 +434,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Notifications sent: ${sentCount}, Failed: ${failedCount}`,
+      message: bookingId
+        ? sentCount > 0
+          ? `ส่งการแจ้งเตือนถึง ${bookings[0].booker_name} เรียบร้อย`
+          : `ส่งการแจ้งเตือนถึง ${bookings[0].booker_name} ไม่สำเร็จ`
+        : `Notifications sent: ${sentCount}, Failed: ${failedCount}`,
       sent: sentCount,
       failed: failedCount,
       total: bookings.length,
