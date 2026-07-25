@@ -83,7 +83,7 @@ export const SuccessScreen: React.FC<SuccessScreenProps> = ({ bookingId, weeklyB
         </div>
         
         {/* Ticket Body */}
-        <div className="p-8 flex flex-col items-center gap-6">
+        <div className="p-8 flex flex-col items-center gap-3">
            <div className="bg-white p-2 rounded-xl border-2 border-stone-100 shadow-inner">
              <img 
                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${bookingId}`} 
@@ -92,11 +92,14 @@ export const SuccessScreen: React.FC<SuccessScreenProps> = ({ bookingId, weeklyB
              />
            </div>
            
-           <div className="text-center space-y-1">
-             <p className="text-2xl font-mono font-bold text-stone-800 tracking-widest">{bookingId}</p>
+           <div className="text-center space-y-1 -mt-1">
+             <p className="text-[14px] font-mono font-semibold text-stone-600 tracking-[0.22em] opacity-80">
+               {bookingId}
+             </p>
              {typeof weeklyBookingCount === 'number' && weeklyBookingCount > 3 && (
-               <p className="text-sm font-medium text-amber-700">
+               <p className="text-sm font-medium text-amber-700 leading-relaxed">
                  สัปดาห์นี้ท่านจองนัด {weeklyBookingCount} ครั้ง
+                 <span className="block">โปรดติดต่อเจ้าหน้าที่ 055-252600</span>
                </p>
              )}
            </div>

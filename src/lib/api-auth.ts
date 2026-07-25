@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/authConfig";
+import { shouldBypassAdminAuth } from "@/lib/dev-auth";
 
 /**
  * Middleware wrapper for API routes that require authentication
@@ -13,8 +14,13 @@ import { auth } from "@/authConfig";
  * }
  */
 export async function requireApiAuth(request: NextRequest): Promise<NextResponse | null> {
+  // Dev mode: /api/admin routes don't require authentication
+  if (shouldBypassAdminAuth(request.nextUrl.pathname)) {
+    return null;
+  }
+
   const session = await auth();
-  
+
   if (!session) {
     return NextResponse.json(
       { 

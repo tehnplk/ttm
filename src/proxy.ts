@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/authConfig";
+import { shouldBypassAdminAuth } from "@/lib/dev-auth";
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
+
+  // Dev mode: /admin and /api/admin don't require authentication
+  if (shouldBypassAdminAuth(pathname)) {
+    return NextResponse.next();
+  }
 
   // Public routes that don't require authentication
   const publicRoutes = [

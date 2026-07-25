@@ -11,6 +11,19 @@ interface NotificationSettings {
   daysBefore: number;
 }
 
+interface Recipient {
+  id: number;
+  bookingCode: string | null;
+  bookerName: string;
+  dateLabel: string;
+  timeLabel: string;
+  branchName: string | null;
+  serviceName: string | null;
+  status: string | null;
+  lineId: string | null;
+  lineIdValid: boolean;
+}
+
 export default function NotificationSettingsPage() {
   const [settings, setSettings] = useState<NotificationSettings>({
     id: null,
@@ -26,6 +39,14 @@ export default function NotificationSettingsPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+
+  // Test send picker
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [targetDate, setTargetDate] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -83,7 +104,39 @@ export default function NotificationSettingsPage() {
     }
   }
 
+  // Open the picker and load the bookings that match the current conditions
+  async function openTestPicker() {
+    setPickerOpen(true);
+    setSelectedId(null);
+    setTestResult(null);
+    setTestError(null);
+    setPickerError(null);
+    setRecipients([]);
+    setTargetDate(null);
+
+    try {
+      setPickerLoading(true);
+      const res = await fetch(
+        `/api/admin/notifications/recipients?daysBefore=${settings.daysBefore}`,
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'ไม่สามารถโหลดรายชื่อผู้รับได้');
+      }
+      setRecipients(data.recipients || []);
+      setTargetDate(data.targetDate || null);
+    } catch (err: any) {
+      setPickerError(err?.message || 'ไม่สามารถโหลดรายชื่อผู้รับได้');
+      console.error('Load recipients error:', err);
+    } finally {
+      setPickerLoading(false);
+    }
+  }
+
+  // Send to the one selected person only
   async function handleTestSend() {
+    if (!selectedId) return;
+
     try {
       setTesting(true);
       setTestResult(null);
@@ -91,16 +144,24 @@ export default function NotificationSettingsPage() {
 
       const res = await fetch('/api/admin/notifications/send', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: selectedId }),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'ไม่สามารถส่งการแจ้งเตือนทดสอบได้');
       }
 
-      setTestResult(data.message || 'ส่งการแจ้งเตือนทดสอบเรียบร้อย');
+      if (data.sent > 0) {
+        setTestResult(data.message || 'ส่งการแจ้งเตือนทดสอบเรียบร้อย');
+      } else {
+        setTestError(data.message || 'ไม่สามารถส่งการแจ้งเตือนทดสอบได้');
+      }
+      setPickerOpen(false);
     } catch (err: any) {
       const message = err?.message || 'ไม่สามารถส่งการแจ้งเตือนทดสอบได้';
       setTestError(message);
+      setPickerOpen(false);
       console.error('Test send error:', err);
     } finally {
       setTesting(false);
@@ -264,7 +325,7 @@ export default function NotificationSettingsPage() {
             )}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
               <button
-                onClick={handleTestSend}
+                onClick={openTestPicker}
                 disabled={testing}
                 className="flex items-center gap-2 rounded-lg border border-stone-300 px-4 py-2.5 text-sm font-semibold text-stone-700 transition-colors hover:border-stone-400 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-70"
               >
@@ -301,6 +362,169 @@ export default function NotificationSettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Test Send Picker Modal */}
+      {pickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-stone-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl">
+            {/* Modal header */}
+            <div className="flex items-start justify-between gap-3 border-b border-stone-200 px-5 py-4">
+              <div>
+                <h2 className="text-base font-bold text-stone-900">
+                  ทดสอบส่งการแจ้งเตือน
+                </h2>
+                <p className="mt-0.5 text-xs text-stone-500">
+                  เลือกผู้รับได้ 1 คน ระบบจะส่ง LINE เฉพาะคนที่เลือกเท่านั้น
+                </p>
+              </div>
+              <button
+                onClick={() => setPickerOpen(false)}
+                className="rounded-lg p-1 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                aria-label="ปิด"
+              >
+                <Icon icon="solar:close-circle-bold" className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Conditions used to build the list */}
+            <div className="border-b border-stone-200 bg-stone-50 px-5 py-3 text-xs text-stone-600">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span>
+                  แจ้งเตือนล่วงหน้า{' '}
+                  <span className="font-semibold text-stone-900">
+                    {settings.daysBefore} วัน
+                  </span>
+                </span>
+                {targetDate && (
+                  <span>
+                    วันนัดที่เข้าเงื่อนไข:{' '}
+                    <span className="font-semibold text-stone-900">{targetDate}</span>
+                  </span>
+                )}
+              </div>
+              {settings.enabled !== 'yes' && (
+                <p className="mt-2 text-amber-700">
+                  การแจ้งเตือนอัตโนมัติปิดอยู่ แต่การทดสอบส่งยังส่งได้ตามปกติ
+                </p>
+              )}
+            </div>
+
+            {/* Recipient list */}
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {pickerLoading ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-sm text-stone-500">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-stone-400 border-t-transparent"></div>
+                  <span>กำลังโหลดรายชื่อ...</span>
+                </div>
+              ) : pickerError ? (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                  {pickerError}
+                </div>
+              ) : recipients.length === 0 ? (
+                <div className="py-10 text-center text-sm text-stone-500">
+                  <Icon
+                    icon="solar:inbox-line-duotone"
+                    className="mx-auto mb-2 h-10 w-10 text-stone-300"
+                  />
+                  <p>ไม่มีรายการจองที่เข้าเงื่อนไขการแจ้งเตือน</p>
+                  <p className="mt-1 text-xs">
+                    (ต้องมี LINE ID และสถานะยังไม่ถูกยกเลิก)
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {recipients.map((recipient) => (
+                    <label
+                      key={recipient.id}
+                      className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
+                        selectedId === recipient.id
+                          ? 'border-primary-400 bg-primary-50'
+                          : 'border-stone-200 hover:border-stone-300 hover:bg-stone-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="recipient"
+                        checked={selectedId === recipient.id}
+                        onChange={() => setSelectedId(recipient.id)}
+                        className="mt-1 h-4 w-4 shrink-0 text-primary-600 focus:ring-primary-500"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2">
+                          <span className="text-sm font-semibold text-stone-900">
+                            {recipient.bookerName}
+                          </span>
+                          {recipient.bookingCode && (
+                            <span className="text-[11px] text-stone-400">
+                              {recipient.bookingCode}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 flex items-center gap-1.5 text-xs text-stone-600">
+                          <Icon
+                            icon="solar:calendar-linear"
+                            className="h-3.5 w-3.5 shrink-0 text-stone-400"
+                          />
+                          <span>
+                            {recipient.dateLabel} เวลา {recipient.timeLabel}
+                          </span>
+                        </div>
+                        {(recipient.branchName || recipient.serviceName) && (
+                          <div className="mt-0.5 text-xs text-stone-500">
+                            {[recipient.branchName, recipient.serviceName]
+                              .filter(Boolean)
+                              .join(' • ')}
+                          </div>
+                        )}
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
+                            <span className="font-semibold">LINE</span>
+                            <span className="font-mono">{recipient.lineId}</span>
+                          </span>
+                          {!recipient.lineIdValid && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+                              <Icon icon="solar:danger-triangle-bold" className="h-3 w-3" />
+                              <span>รูปแบบ LINE ID ไม่ถูกต้อง</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal actions */}
+            <div className="flex items-center justify-end gap-2 border-t border-stone-200 px-5 py-4">
+              <button
+                onClick={() => setPickerOpen(false)}
+                disabled={testing}
+                className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleTestSend}
+                disabled={testing || !selectedId}
+                className="flex items-center gap-2 rounded-lg bg-stone-900 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+              >
+                {testing ? (
+                  <>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                    <span>กำลังส่ง...</span>
+                  </>
+                ) : (
+                  <>
+                    <Icon icon="solar:paper-plane-2-bold" className="h-4 w-4" />
+                    <span>ส่งให้คนที่เลือก</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Info Box */}
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
