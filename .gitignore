@@ -43,12 +43,15 @@ next-env.d.ts
 *.sql
 phbookingmedth_dump_*.sql
 *.dump
+# ...but Prisma migrations must ship with the deploy
+!prisma/migrations/**/*.sql
 
 # trash
 .trash/
 
-# claude
-.claude/
+# claude (keep shared agent definitions, ignore local settings)
+.claude/*
+!.claude/agents/
 
 # playwright temp artifacts
 .playwright-cli/

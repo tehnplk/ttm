@@ -4,6 +4,12 @@ import { join } from "path";
 import { existsSync, mkdirSync } from "fs";
 import { requireApiAuth } from "@/lib/api-auth";
 
+// Sub-folders under public/images that callers may upload into, and the prefix
+// used for files stored there. Anything else falls back to the root folder.
+const ALLOWED_FOLDERS: Record<string, string> = {
+  broadcasts: "broadcast",
+};
+
 export async function POST(request: NextRequest) {
   // Check authentication
   const authError = await requireApiAuth(request);
@@ -12,6 +18,12 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File;
+
+    const folderInput = String(formData.get("folder") || "").trim();
+    const folder = Object.prototype.hasOwnProperty.call(ALLOWED_FOLDERS, folderInput)
+      ? folderInput
+      : "";
+    const filePrefix = folder ? ALLOWED_FOLDERS[folder] : "staff";
 
     if (!file) {
       return NextResponse.json(
@@ -66,10 +78,10 @@ export async function POST(request: NextRequest) {
       }
       
       // ใช้ project root/public/images (Next.js serve จากที่นี่)
-      uploadDir = join(projectRoot, 'public', 'images');
+      uploadDir = join(projectRoot, 'public', 'images', folder);
     } else {
       // ใน development, ใช้ process.cwd() ปกติ
-      uploadDir = join(process.cwd(), "public", "images");
+      uploadDir = join(process.cwd(), "public", "images", folder);
     }
     
     try {
@@ -89,7 +101,7 @@ export async function POST(request: NextRequest) {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 9);
     const extension = file.name.split(".").pop();
-    const filename = `staff-${timestamp}-${random}.${extension}`;
+    const filename = `${filePrefix}-${timestamp}-${random}.${extension}`;
     const filepath = join(uploadDir, filename);
 
     // แปลง File เป็น Buffer และบันทึก
@@ -108,9 +120,10 @@ export async function POST(request: NextRequest) {
 
     // ส่งกลับ path ที่ relative ต่อ public folder
     // ใน production standalone mode, ใช้ API route เพื่อ serve ไฟล์
-    const imageUrl = isProduction 
-      ? `/api/images/${filename}`  // Use API route in production
-      : `/images/${filename}`;     // Use static file in development
+    const folderPath = folder ? `${folder}/` : "";
+    const imageUrl = isProduction
+      ? `/api/images/${folderPath}${filename}`  // Use API route in production
+      : `/images/${folderPath}${filename}`;     // Use static file in development
 
     return NextResponse.json({ url: imageUrl }, { status: 200 });
   } catch (error: any) {

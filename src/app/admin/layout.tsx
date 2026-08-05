@@ -72,7 +72,7 @@ export default function AdminLayout({
     if (pathname.startsWith("/admin/opening-hours")) return "ตั้งค่าเวลา";
     if (pathname.startsWith("/admin/settings")) return "ตั้งค่าการจอง";
     if (pathname.startsWith("/admin/notifications")) return "ตั้งค่าการแจ้งเตือน";
-    if (pathname.startsWith("/admin/broadcasts")) return "ตั้งค่าส่ง Broadcast";
+    if (pathname.startsWith("/admin/broadcasts")) return "การส่ง Broadcast";
     if (pathname.startsWith("/admin/users")) return "จัดการผู้ใช้งาน";
     return "Admin Console";
   };
@@ -444,7 +444,7 @@ export default function AdminLayout({
                   : "text-stone-500"
                   }`}
               />
-              <span>ตั้งค่าส่ง Broadcast</span>
+              <span>การส่ง Broadcast</span>
             </Link>
             <Link
               href="/admin/faq"

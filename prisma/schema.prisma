@@ -260,23 +260,38 @@ model NotificationSettings {
   @@map("notification_settings")
 }
 
-// Broadcast Settings table
-model BroadcastSettings {
-  id           Int       @id @default(autoincrement())
-  broadcastDate DateTime @map("broadcast_date") @db.Date
-  broadcastTime String   @map("broadcast_time") @db.VarChar(5)
-  message      String   @db.Text
-  branchIds    String   @default("[]") @map("branch_ids") @db.Text
-  enabled      String   @default("yes") @db.VarChar(255)
-  sent         String   @default("no") @db.VarChar(255)
-  sentAt       DateTime? @map("sent_at") @db.DateTime
-  createdAt    DateTime? @default(now()) @map("created_at") @db.DateTime
-  updatedAt    DateTime? @updatedAt @map("updated_at") @db.DateTime
+// Broadcast send log - one row per broadcast that was actually sent out
+model BroadcastLog {
+  id          Int      @id @default(autoincrement())
+  imagePath   String   @map("image_path") @db.VarChar(500)
+  // MySQL rejects DEFAULT on TEXT columns, so this is always written explicitly
+  branchIds   String   @map("branch_ids") @db.Text
+  totalCount  Int      @default(0) @map("total_count")
+  sentCount   Int      @default(0) @map("sent_count")
+  failedCount Int      @default(0) @map("failed_count")
+  isTest      String   @default("no") @map("is_test") @db.VarChar(10)
+  sentAt      DateTime @map("sent_at") @db.DateTime
 
-  @@index([broadcastDate])
-  @@index([broadcastDate, broadcastTime])
-  @@index([enabled, sent])
-  @@map("broadcast_settings")
+  recipients BroadcastRecipient[]
+
+  @@index([sentAt])
+  @@map("broadcast_send_log")
+}
+
+// One row per LINE user a broadcast was pushed to
+model BroadcastRecipient {
+  id      Int      @id @default(autoincrement())
+  logId   Int      @map("log_id")
+  lineId  String   @map("line_id") @db.VarChar(255)
+  name    String?  @db.VarChar(255)
+  phone   String?  @db.VarChar(255)
+  success String   @default("yes") @db.VarChar(10)
+  sentAt  DateTime @map("sent_at") @db.DateTime
+
+  log BroadcastLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+
+  @@index([logId])
+  @@map("broadcast_send_recipient")
 }
 
 // Admin Users table for authentication
