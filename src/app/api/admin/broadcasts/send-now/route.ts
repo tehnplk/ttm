@@ -1,10 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { requireApiAuth } from "@/lib/api-auth";
-import { BroadcastTarget, resolveImageUrl, runBroadcast } from "@/lib/line-broadcast";
+import {
+  BroadcastTarget,
+  createBroadcastLog,
+  resolveImageUrl,
+  runBroadcastPushes,
+} from "@/lib/line-broadcast";
 
-// Send a broadcast immediately to everyone who booked at the selected branches
+// Send a broadcast immediately to everyone who booked at the selected branches.
+// The pushes run in the background: sending to 1156 recipients took 6m13s, far
+// past the reverse proxy's read timeout, which made nginx answer the browser
+// with an HTML error page while the send actually kept running and succeeded.
+// The response now returns as soon as the log row exists, and the client polls
+// that row for progress.
 export async function POST(request: NextRequest) {
   // Check authentication
   const authError = await requireApiAuth(request);
@@ -54,15 +64,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await runBroadcast({ imagePath, imageUrl, branchIds, targets });
-
-    return NextResponse.json({
-      success: true,
-      id: result.logId,
-      total: result.total,
-      sent: result.sent,
-      failed: result.failed,
+    const recipients = targets.filter((target) => target.line_id);
+    const logId = await createBroadcastLog({
+      imagePath,
+      branchIds,
+      total: recipients.length,
     });
+
+    // Runs after the response is flushed, so the browser never waits on LINE
+    after(() => runBroadcastPushes({ logId, imagePath, imageUrl, targets: recipients }));
+
+    return NextResponse.json(
+      {
+        success: true,
+        queued: true,
+        id: logId,
+        total: recipients.length,
+      },
+      { status: 202 },
+    );
   } catch (error) {
     console.error("Send broadcast now error", error);
     return NextResponse.json(

@@ -1,7 +1,43 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@iconify/react';
+
+/**
+ * Read a JSON response, tolerating the bodies that never reach our route
+ * handlers. A reverse proxy answers 502/504/413 with its own HTML page, and
+ * calling res.json() on that throws "Unexpected token '<'", which tells the
+ * user nothing. Parse defensively and translate the status instead.
+ */
+async function readJson(res: Response): Promise<any> {
+  const raw = await res.text();
+
+  let data: any = null;
+  try {
+    data = raw ? JSON.parse(raw) : null;
+  } catch {
+    // Not JSON — an infrastructure error page, handled below
+  }
+
+  if (data && typeof data === 'object') {
+    if (!res.ok) {
+      throw new Error(data.error || `เซิร์ฟเวอร์ตอบกลับผิดพลาด (${res.status})`);
+    }
+    return data;
+  }
+
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    throw new Error(
+      'เซิร์ฟเวอร์ใช้เวลาตอบกลับนานเกินกำหนด คำสั่งอาจยังทำงานอยู่เบื้องหลัง กรุณารีเฟรชหน้าเพื่อตรวจสอบผลก่อนสั่งซ้ำ'
+    );
+  }
+
+  if (res.status === 413) {
+    throw new Error('ไฟล์มีขนาดใหญ่เกินกว่าที่เซิร์ฟเวอร์รับได้');
+  }
+
+  throw new Error(`เซิร์ฟเวอร์ตอบกลับในรูปแบบที่ไม่รองรับ (${res.status})`);
+}
 
 interface BroadcastLog {
   id: number;
@@ -33,6 +69,13 @@ interface Recipient {
   phone: string;
   success: boolean;
   sentAt: string | null;
+}
+
+interface SendProgress {
+  id: number;
+  total: number;
+  sent: number;
+  failed: number;
 }
 
 // Format date time in Thai format (Buddhist era)
@@ -90,10 +133,15 @@ export default function BroadcastPage() {
   const [selectedLineId, setSelectedLineId] = useState('');
   const [testImage, setTestImage] = useState('');
   const [sendingTest, setSendingTest] = useState(false);
+  const [progress, setProgress] = useState<SendProgress | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     loadLogs();
     loadBranches();
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
   async function loadRecipients(logId: number) {
@@ -101,10 +149,7 @@ export default function BroadcastPage() {
       setLoadingRecipients(true);
       setError(null);
       const res = await fetch(`/api/admin/broadcasts/logs/${logId}/recipients`);
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'ไม่สามารถโหลดรายชื่อผู้รับได้');
-      }
+      const data = await readJson(res);
       setRecipients(data.recipients || []);
       setShowRecipients(logId);
     } catch (err: any) {
@@ -115,31 +160,29 @@ export default function BroadcastPage() {
     }
   }
 
-  async function loadLogs() {
+  // `silent` keeps the progress poll from flipping the page back to its spinner
+  async function loadLogs(options?: { silent?: boolean }): Promise<BroadcastLog[]> {
     try {
-      setLoading(true);
+      if (!options?.silent) setLoading(true);
       const res = await fetch('/api/admin/broadcasts/logs');
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to load broadcast logs');
-      }
-      setLogs(data.logs || []);
+      const data = await readJson(res);
+      const nextLogs: BroadcastLog[] = data.logs || [];
+      setLogs(nextLogs);
       setError(null);
+      return nextLogs;
     } catch (err: any) {
       setError(err.message || 'ไม่สามารถโหลดข้อมูลได้');
       console.error('Load broadcast logs error:', err);
+      return [];
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   }
 
   async function loadBranches() {
     try {
       const res = await fetch('/api/admin/branches');
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to load branches');
-      }
+      const data = await readJson(res);
       setBranches(data.branches || []);
     } catch (err: any) {
       console.error('Load branches error:', err);
@@ -195,12 +238,7 @@ export default function BroadcastPage() {
         body: formData,
       });
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || 'อัปโหลดรูปภาพไม่สำเร็จ');
-      }
-
-      const data = await res.json();
+      const data = await readJson(res);
       setImage(data.url);
     } catch (err: any) {
       setError(err.message || 'อัปโหลดรูปภาพไม่สำเร็จ');
@@ -235,10 +273,7 @@ export default function BroadcastPage() {
       setSelectedLineId('');
 
       const res = await fetch(`/api/admin/broadcasts/customers?q=${encodeURIComponent(query)}`);
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'ค้นหาไม่สำเร็จ');
-      }
+      const data = await readJson(res);
 
       setCustomers(data.customers || []);
     } catch (err: any) {
@@ -271,10 +306,7 @@ export default function BroadcastPage() {
         body: JSON.stringify({ lineId: selectedLineId, imageUrl: testImage }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to send test broadcast');
-      }
+      const data = await readJson(res);
 
       setShowTestSend(false);
       setSuccessMessage(
@@ -318,26 +350,72 @@ export default function BroadcastPage() {
         body: JSON.stringify({ branchIds: sendNowBranchIds, imageUrl: sendNowImage }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to send broadcast');
-      }
+      const data = await readJson(res);
 
       setShowSendNow(false);
       setSendNowBranchIds([]);
       setSendNowImage('');
-      setSuccessMessage(
-        data.failed > 0
-          ? `ส่งรูปภาพสำเร็จ ${data.sent} คน ไม่สำเร็จ ${data.failed} คน (ทั้งหมด ${data.total} คน)`
-          : `ส่งรูปภาพสำเร็จ ${data.sent} คน`
-      );
-      setTimeout(() => setSuccessMessage(null), 5000);
-      await loadLogs();
+      await loadLogs({ silent: true });
+      startProgressPolling(data.id, data.total ?? 0);
     } catch (err: any) {
       setError(err.message || 'ไม่สามารถส่ง broadcast ได้');
       console.error('Send now error:', err);
     } finally {
       setSendingNow(false);
+    }
+  }
+
+  // The send itself runs in the background, so follow the log row until the
+  // recipient counts add up to the total (or clearly stop moving).
+  function startProgressPolling(logId: number, total: number) {
+    stopProgressPolling();
+    setProgress({ id: logId, total, sent: 0, failed: 0 });
+
+    let lastDone = -1;
+    let stalledPolls = 0;
+
+    pollRef.current = setInterval(async () => {
+      const nextLogs = await loadLogs({ silent: true });
+      const log = nextLogs.find((item) => item.id === logId);
+      if (!log) return;
+
+      const done = log.sentCount + log.failedCount;
+      setProgress({
+        id: logId,
+        total: log.totalCount,
+        sent: log.sentCount,
+        failed: log.failedCount,
+      });
+
+      if (done >= log.totalCount) {
+        stopProgressPolling();
+        setProgress(null);
+        setSuccessMessage(
+          log.failedCount > 0
+            ? `ส่งรูปภาพสำเร็จ ${log.sentCount} คน ไม่สำเร็จ ${log.failedCount} คน (ทั้งหมด ${log.totalCount} คน)`
+            : `ส่งรูปภาพสำเร็จ ${log.sentCount} คน`
+        );
+        setTimeout(() => setSuccessMessage(null), 8000);
+        return;
+      }
+
+      // Nothing moved for ~2 minutes: stop polling rather than spin forever
+      stalledPolls = done === lastDone ? stalledPolls + 1 : 0;
+      lastDone = done;
+      if (stalledPolls >= 40) {
+        stopProgressPolling();
+        setProgress(null);
+        setError(
+          `การส่งค้างอยู่ที่ ${done}/${log.totalCount} คน หยุดติดตามผลแล้ว กรุณารีเฟรชหน้าเพื่อตรวจสอบอีกครั้ง`
+        );
+      }
+    }, 3000);
+  }
+
+  function stopProgressPolling() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
   }
 
@@ -351,10 +429,7 @@ export default function BroadcastPage() {
         method: 'DELETE',
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to delete broadcast log');
-      }
+      await readJson(res);
 
       setSuccessMessage('ลบประวัติการส่งสำเร็จ');
       setTimeout(() => setSuccessMessage(null), 3000);
@@ -398,7 +473,9 @@ export default function BroadcastPage() {
           </button>
           <button
             onClick={handleOpenSendNow}
-            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+            disabled={progress !== null}
+            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-stone-400"
+            title={progress !== null ? 'กำลังส่งชุดก่อนหน้าอยู่' : undefined}
           >
             <Icon icon="solar:plain-bold" className="h-5 w-5" />
             <span>ส่งทันที</span>
@@ -413,6 +490,32 @@ export default function BroadcastPage() {
             <Icon icon="solar:check-circle-bold" className="h-5 w-5" />
             <p className="font-medium">{successMessage}</p>
           </div>
+        </div>
+      )}
+
+      {/* Send Progress */}
+      {progress && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-800">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
+            <p className="font-medium">
+              กำลังส่งรูปภาพ {progress.sent + progress.failed} / {progress.total} คน
+              {progress.failed > 0 && ` (ไม่สำเร็จ ${progress.failed} คน)`}
+            </p>
+          </div>
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-blue-100">
+            <div
+              className="h-full rounded-full bg-blue-600 transition-all duration-500"
+              style={{
+                width: `${progress.total > 0
+                  ? Math.min(100, Math.round(((progress.sent + progress.failed) / progress.total) * 100))
+                  : 0}%`,
+              }}
+            ></div>
+          </div>
+          <p className="mt-2 text-xs text-blue-700">
+            ระบบส่งอยู่เบื้องหลัง ปิดหน้านี้ได้ การส่งจะไม่หยุด
+          </p>
         </div>
       )}
 
@@ -856,6 +959,12 @@ export default function BroadcastPage() {
                           <span className="text-xs text-stone-500">
                             ทั้งหมด {log.totalCount} คน
                           </span>
+                          {log.sentCount + log.failedCount < log.totalCount && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                              <span className="h-2 w-2 animate-pulse rounded-full bg-blue-600"></span>
+                              กำลังส่ง
+                            </span>
+                          )}
                           <button
                             onClick={() => loadRecipients(log.id)}
                             className="text-xs text-primary-600 underline hover:text-primary-700"
@@ -971,6 +1080,7 @@ export default function BroadcastPage() {
               <li>• เลือกสาขาก่อน แล้วจึงเลือกรูปภาพที่ต้องการส่ง</li>
               <li>• รองรับเฉพาะไฟล์ JPG หรือ PNG ขนาดไม่เกิน 1MB ตามข้อจำกัดของ LINE</li>
               <li>• เมื่อกดส่งแล้วจะส่งออกทันทีและยกเลิกไม่ได้</li>
+              <li>• ระบบส่งอยู่เบื้องหลัง ปิดหน้านี้ได้ กลับมาเปิดใหม่จะเห็นผลล่าสุดในตาราง</li>
             </ul>
           </div>
         </div>
