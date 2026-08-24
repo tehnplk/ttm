@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireApiAuth } from "@/lib/api-auth";
-import { BroadcastTarget, resolveImageUrl, runBroadcast } from "@/lib/line-broadcast";
+import {
+  BroadcastTarget,
+  resolveBroadcastMessage,
+  runBroadcast,
+} from "@/lib/line-broadcast";
 
-// Send a broadcast image to a single LINE user, for testing
+// Send a broadcast (image, text or YouTube link) to a single LINE user, for testing
 export async function POST(request: NextRequest) {
   // Check authentication
   const authError = await requireApiAuth(request);
   if (authError) return authError;
   try {
     const body = await request.json();
-    const imagePath = typeof body.imageUrl === "string" ? body.imageUrl.trim() : "";
     const lineId = typeof body.lineId === "string" ? body.lineId.trim() : "";
 
     if (!lineId) {
@@ -20,9 +23,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { imageUrl, error: imageError } = resolveImageUrl(imagePath);
-    if (imageError || !imageUrl) {
-      return NextResponse.json({ error: imageError }, { status: 400 });
+    const { message, error: messageError } = resolveBroadcastMessage(body);
+    if (messageError || !message) {
+      return NextResponse.json({ error: messageError }, { status: 400 });
     }
 
     // Only allow LINE IDs that actually exist in our bookings
@@ -42,8 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await runBroadcast({
-      imagePath,
-      imageUrl,
+      message,
       branchIds: [],
       targets,
       isTest: true,

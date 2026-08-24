@@ -10,7 +10,10 @@ export async function GET(request: NextRequest) {
   try {
     const logs = await prisma.$queryRaw<Array<{
       id: number;
-      imagePath: string;
+      messageType: string | null;
+      imagePath: string | null;
+      messageText: string | null;
+      videoUrl: string | null;
       branchIds: string;
       totalCount: number;
       sentCount: number;
@@ -20,7 +23,10 @@ export async function GET(request: NextRequest) {
     }>>`
       SELECT
         id,
+        COALESCE(message_type, 'image') as messageType,
         image_path as imagePath,
+        message_text as messageText,
+        video_url as videoUrl,
         COALESCE(branch_ids, '[]') as branchIds,
         total_count as totalCount,
         sent_count as sentCount,
@@ -45,7 +51,10 @@ export async function GET(request: NextRequest) {
 
         return {
           id: log.id,
-          imagePath: log.imagePath,
+          messageType: log.messageType || "image",
+          imagePath: log.imagePath || "",
+          messageText: log.messageText || "",
+          videoUrl: log.videoUrl || "",
           branchIds,
           totalCount: Number(log.totalCount ?? 0),
           sentCount: Number(log.sentCount ?? 0),

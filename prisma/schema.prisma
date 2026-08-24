@@ -263,7 +263,11 @@ model NotificationSettings {
 // Broadcast send log - one row per broadcast that was actually sent out
 model BroadcastLog {
   id          Int      @id @default(autoincrement())
-  imagePath   String   @map("image_path") @db.VarChar(500)
+  // What went out: image | text | youtube
+  messageType String   @default("image") @map("message_type") @db.VarChar(20)
+  imagePath   String?  @map("image_path") @db.VarChar(500)
+  messageText String?  @map("message_text") @db.Text
+  videoUrl    String?  @map("video_url") @db.VarChar(500)
   // MySQL rejects DEFAULT on TEXT columns, so this is always written explicitly
   branchIds   String   @map("branch_ids") @db.Text
   totalCount  Int      @default(0) @map("total_count")

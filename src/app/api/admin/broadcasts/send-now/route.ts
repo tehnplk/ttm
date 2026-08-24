@@ -5,11 +5,12 @@ import { requireApiAuth } from "@/lib/api-auth";
 import {
   BroadcastTarget,
   createBroadcastLog,
-  resolveImageUrl,
+  resolveBroadcastMessage,
   runBroadcastPushes,
 } from "@/lib/line-broadcast";
 
 // Send a broadcast immediately to everyone who booked at the selected branches.
+// The content is an image, a plain text message, or a YouTube link.
 // The pushes run in the background: sending to 1156 recipients took 6m13s, far
 // past the reverse proxy's read timeout, which made nginx answer the browser
 // with an HTML error page while the send actually kept running and succeeded.
@@ -21,7 +22,6 @@ export async function POST(request: NextRequest) {
   if (authError) return authError;
   try {
     const body = await request.json();
-    const imagePath = typeof body.imageUrl === "string" ? body.imageUrl.trim() : "";
 
     // Recipients are scoped to the selected branches
     const branchIds = (Array.isArray(body.branchIds) ? body.branchIds : [])
@@ -35,9 +35,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { imageUrl, error: imageError } = resolveImageUrl(imagePath);
-    if (imageError || !imageUrl) {
-      return NextResponse.json({ error: imageError }, { status: 400 });
+    const { message, error: messageError } = resolveBroadcastMessage(body);
+    if (messageError || !message) {
+      return NextResponse.json({ error: messageError }, { status: 400 });
     }
 
     // LINE users who booked at one of the selected branches within the last 90 days
@@ -66,13 +66,13 @@ export async function POST(request: NextRequest) {
 
     const recipients = targets.filter((target) => target.line_id);
     const logId = await createBroadcastLog({
-      imagePath,
+      message,
       branchIds,
       total: recipients.length,
     });
 
     // Runs after the response is flushed, so the browser never waits on LINE
-    after(() => runBroadcastPushes({ logId, imagePath, imageUrl, targets: recipients }));
+    after(() => runBroadcastPushes({ logId, message, targets: recipients }));
 
     return NextResponse.json(
       {
