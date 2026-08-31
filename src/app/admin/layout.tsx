@@ -65,9 +65,9 @@ export default function AdminLayout({
     if (pathname.startsWith("/admin/booking-delete-logs")) return "ประวัติการลบการจอง";
     if (pathname.startsWith("/admin/branches")) return "สาขา";
     if (pathname.startsWith("/admin/services")) return "บริการ";
+    if (pathname.startsWith("/admin/staff-holidays")) return "พนักงานลาหยุด";
     if (pathname.startsWith("/admin/staff")) return "พนักงาน";
     if (pathname.startsWith("/admin/schedule")) return "ตารางหยุดพนักงาน";
-    if (pathname.startsWith("/admin/staff-holidays")) return "บันทึกวันหยุดพนักงาน";
     if (pathname.startsWith("/admin/reports")) return "รายงาน";
     if (pathname.startsWith("/admin/opening-hours")) return "ตั้งค่าเวลา";
     if (pathname.startsWith("/admin/settings")) return "ตั้งค่าการจอง";
@@ -82,9 +82,9 @@ export default function AdminLayout({
     if (pathname.startsWith("/admin/bookings")) return "solar:calendar-linear";
     if (pathname.startsWith("/admin/branches")) return "solar:buildings-3-linear";
     if (pathname.startsWith("/admin/services")) return "solar:list-linear";
+    if (pathname.startsWith("/admin/staff-holidays")) return "solar:calendar-mark-linear";
     if (pathname.startsWith("/admin/staff")) return "solar:users-group-two-rounded-outline";
     if (pathname.startsWith("/admin/schedule")) return "solar:clock-circle-outline";
-    if (pathname.startsWith("/admin/staff-holidays")) return "solar:calendar-mark-linear";
     if (pathname.startsWith("/admin/reports")) return "solar:chart-square-linear";
     if (pathname.startsWith("/admin/opening-hours")) return "solar:clock-circle-linear";
     if (pathname.startsWith("/admin/settings")) return "solar:settings-linear";
@@ -364,7 +364,7 @@ export default function AdminLayout({
                   : "text-stone-500"
                   }`}
               />
-              <span>บันทึกวันหยุดพนักงาน</span>
+              <span>พนักงานลาหยุด</span>
             </Link>
             <Link
               href="/admin/opening-hours"

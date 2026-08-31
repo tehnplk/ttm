@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { toISODateString } from "@/utils";
 
@@ -32,20 +33,45 @@ type HolidayRecord = {
   note: string;
 };
 
-export default function AdminStaffHolidaysPage() {
+function AdminStaffHolidaysContent() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Branch + staff selection lives in the URL so the view is shareable and
+  // survives a reload / back-forward navigation
+  const selectedBranchId = searchParams.get("branchId") ?? "";
+  const selectedStaffId = searchParams.get("staffId") ?? "";
+
+  const setSelection = useCallback(
+    (next: { branchId?: string; staffId?: string }) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(next)) {
+        if (value) {
+          params.set(key, value);
+        } else {
+          params.delete(key);
+        }
+      }
+      const query = params.toString();
+      // Native History API: updates the URL and useSearchParams in place,
+      // without a router navigation
+      window.history.replaceState(null, "", query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, searchParams],
+  );
+
   const [activeTab, setActiveTab] = useState<'calendar' | 'list'>('calendar');
   const [branches, setBranches] = useState<BranchOption[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState<string>("");
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [filteredStaff, setFilteredStaff] = useState<StaffOption[]>([]);
-  const [selectedStaffId, setSelectedStaffId] = useState<string>("");
   const [staffSearchQuery, setStaffSearchQuery] = useState("");
   const [showStaffDropdown, setShowStaffDropdown] = useState(false);
+  const [isStaffSearching, setIsStaffSearching] = useState(false);
   const [holidays, setHolidays] = useState<HolidayDate[]>([]);
   const [allHolidays, setAllHolidays] = useState<HolidayRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingList, setLoadingList] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [pendingDates, setPendingDates] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   // Load branches
@@ -126,51 +152,61 @@ export default function AdminStaffHolidaysPage() {
   }
 
   // Generate dates for current month + 2 months ahead
+  // Past dates are included too, but the calendar renders them read-only
   function generateMonthDates(holidayMap: Map<string, string>) {
     const dates: HolidayDate[] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
 
     // Generate dates for current month and next 2 months
     for (let monthOffset = 0; monthOffset < 3; monthOffset++) {
-      const displayMonth = new Date();
-      displayMonth.setMonth(displayMonth.getMonth() + monthOffset);
+      const now = new Date();
+      const displayMonth = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
       const year = displayMonth.getFullYear();
       const month = displayMonth.getMonth();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
 
       for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month, day);
-        // Only include dates from today onwards
-        if (date >= today) {
-          const dateStr = toISODateString(date);
-          const holidayId = holidayMap.get(dateStr);
-          dates.push({
-            date: dateStr,
-            isHoliday: !!holidayId,
-            holidayId: holidayId,
-          });
-        }
+        const dateStr = toISODateString(new Date(year, month, day));
+        const holidayId = holidayMap.get(dateStr);
+        dates.push({
+          date: dateStr,
+          isHoliday: !!holidayId,
+          holidayId: holidayId,
+        });
       }
     }
 
     setHolidays(dates);
   }
 
-  // Toggle holiday (off)
+  // Toggle holiday - optimistic update, saves to DB without reloading the calendar
   async function toggleHoliday(date: string) {
     if (!selectedStaffId) {
       setError("กรุณาเลือกพนักงานก่อน");
       return;
     }
+    if (pendingDates.has(date)) return;
+
+    // Past dates are read-only
+    const todayStr = toISODateString(new Date());
+    if (date < todayStr) return;
 
     const holiday = holidays.find(h => h.date === date);
     const isCurrentlyHoliday = holiday?.isHoliday || false;
+    const previousHolidayId = holiday?.holidayId;
+
+    const setDateState = (isHoliday: boolean, holidayId?: string) => {
+      setHolidays(prev => prev.map(h => (
+        h.date === date ? { ...h, isHoliday, holidayId } : h
+      )));
+    };
+    const revert = () => setDateState(isCurrentlyHoliday, previousHolidayId);
+
+    setError(null);
+    setPendingDates(prev => new Set(prev).add(date));
+    // Flip immediately so the switch responds without waiting for the server
+    setDateState(!isCurrentlyHoliday, isCurrentlyHoliday ? undefined : previousHolidayId);
 
     try {
-      setSubmitting(true);
-      setError(null);
-
       // If trying to add holiday (turn OFF), check if staff has bookings on this date
       if (!isCurrentlyHoliday) {
         // Check if staff has bookings on this date
@@ -187,24 +223,25 @@ export default function AdminStaffHolidaysPage() {
               const isActive = !b.status || (b.status !== 'cancelled');
               return isSameStaff && isSameDate && isActive;
             }) || [];
-            
+
             if (bookingsOnDate.length > 0) {
               const staffName = filteredStaff.find(s => s.id === selectedStaffId)?.name || 'พนักงาน';
-              const dateStr = new Date(date).toLocaleDateString('th-TH', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
+              const dateStr = new Date(date).toLocaleDateString('th-TH', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
               });
-              setError(`${staffName} มีการจองในวันที่ ${dateStr} (${bookingsOnDate.length} รายการ) ไม่สามารถ OFF ได้`);
-              setSubmitting(false);
-              return;
+              throw new Error(`${staffName} มีการจองในวันที่ ${dateStr} (${bookingsOnDate.length} รายการ) ไม่สามารถ OFF ได้`);
+            }
           }
-        }
-        } catch (checkErr) {
+        } catch (checkErr: unknown) {
+          // Only abort on our own validation error; ignore network failures of the check
+          if (checkErr instanceof Error && checkErr.message.includes('ไม่สามารถ OFF ได้')) {
+            throw checkErr;
+          }
           console.error("Error checking bookings:", checkErr);
-          // Continue with adding holiday if check fails (might be network issue)
         }
-        
+
         // Add holiday
         const res = await fetch("/api/admin/staff-holidays", {
           method: "POST",
@@ -216,14 +253,16 @@ export default function AdminStaffHolidaysPage() {
             note: "",
           }),
         });
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const data = await res.json();
           throw new Error(data.error || "บันทึกวันหยุดไม่สำเร็จ");
         }
+        // Keep the id the server assigned so the next toggle can delete it
+        setDateState(true, data.id ? String(data.id) : undefined);
       } else {
         // Remove holiday (turn ON) - always allowed
-        if (holiday?.holidayId) {
-          const res = await fetch(`/api/admin/staff-holidays/${holiday.holidayId}`, {
+        if (previousHolidayId) {
+          const res = await fetch(`/api/admin/staff-holidays/${previousHolidayId}`, {
             method: "DELETE",
           });
           if (!res.ok) {
@@ -231,15 +270,15 @@ export default function AdminStaffHolidaysPage() {
           }
         }
       }
-
-      await loadHolidays();
-      if (activeTab === 'list') {
-        await loadAllHolidays();
-      }
     } catch (err: any) {
+      revert();
       setError(err.message ?? "บันทึกวันหยุดไม่สำเร็จ");
     } finally {
-      setSubmitting(false);
+      setPendingDates(prev => {
+        const next = new Set(prev);
+        next.delete(date);
+        return next;
+      });
     }
   }
 
@@ -248,7 +287,8 @@ export default function AdminStaffHolidaysPage() {
     void loadStaff();
   }, []);
 
-  // Filter staff by branch
+  // Filter staff by branch. This must NOT clear the selection: it also runs when
+  // the staff list finishes loading, which would wipe a staffId coming from the URL.
   useEffect(() => {
     if (!selectedBranchId) {
       setFilteredStaff(staff);
@@ -256,11 +296,27 @@ export default function AdminStaffHolidaysPage() {
       const branchIdNum = parseInt(selectedBranchId);
       setFilteredStaff(staff.filter(s => s.branchId === branchIdNum));
     }
-    setSelectedStaffId("");
+  }, [selectedBranchId, staff]);
+
+  // What the picker shows when the user is not typing: whoever the URL selects
+  const selectedStaffName = staff.find(s => s.id === selectedStaffId)?.name ?? "";
+
+  // Opening the picker always lists every staff in the branch: the previous
+  // pick must not filter the list down to itself
+  function openStaffDropdown() {
+    setIsStaffSearching(false);
+    setStaffSearchQuery("");
+    setShowStaffDropdown(true);
+  }
+
+  // Changing branch drops the staff selected under the previous branch
+  function handleBranchChange(branchId: string) {
+    setSelection({ branchId, staffId: "" });
     setStaffSearchQuery("");
     setShowStaffDropdown(false);
+    setIsStaffSearching(false);
     setHolidays([]);
-  }, [selectedBranchId, staff]);
+  }
 
 
   // Load holidays when staff is selected
@@ -325,7 +381,7 @@ export default function AdminStaffHolidaysPage() {
     <div className="space-y-4">
       <div>
         <h1 className="mb-1 text-xl font-bold tracking-tight">
-          บันทึกวันหยุดพนักงาน
+          พนักงานลาหยุด
         </h1>
         <p className="text-sm text-stone-500">
           เลือกสาขาและพนักงานเพื่อบันทึกวันหยุด
@@ -364,7 +420,7 @@ export default function AdminStaffHolidaysPage() {
           </label>
           <select
             value={selectedBranchId}
-            onChange={(e) => setSelectedBranchId(e.target.value)}
+            onChange={(e) => handleBranchChange(e.target.value)}
             className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200"
           >
             <option value="">-- เลือกสาขา --</option>
@@ -383,22 +439,55 @@ export default function AdminStaffHolidaysPage() {
           <div className="relative">
             <input
               type="text"
-              className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200 cursor-pointer"
+              className="w-full rounded-lg border border-stone-300 py-2 pl-3 pr-8 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200 cursor-pointer"
               placeholder="ค้นหาหรือเลือกพนักงาน..."
-              value={staffSearchQuery || filteredStaff.find(s => s.id === selectedStaffId)?.name || ""}
+              value={isStaffSearching ? staffSearchQuery : selectedStaffName}
               onChange={(e) => {
                 setStaffSearchQuery(e.target.value);
+                setIsStaffSearching(true);
                 setShowStaffDropdown(true);
-                if (!e.target.value) {
-                  setSelectedStaffId("");
+                if (!e.target.value && selectedStaffId) {
+                  setSelection({ staffId: "" });
                 }
               }}
-              onFocus={() => setShowStaffDropdown(true)}
+              onFocus={(e) => {
+                openStaffDropdown();
+                e.target.select();
+              }}
+              // The input keeps focus after a pick, so onFocus alone would never
+              // fire again - clicking it must reopen the list on its own
+              onClick={() => openStaffDropdown()}
               onBlur={() => {
-                setTimeout(() => setShowStaffDropdown(false), 200);
+                setTimeout(() => {
+                  setShowStaffDropdown(false);
+                  // Drop half-typed text: the box falls back to the URL selection
+                  setIsStaffSearching(false);
+                  setStaffSearchQuery("");
+                }, 200);
               }}
               disabled={!selectedBranchId}
             />
+            {selectedBranchId && (
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={showStaffDropdown ? "ปิดรายชื่อพนักงาน" : "เปิดรายชื่อพนักงาน"}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (showStaffDropdown) {
+                    setShowStaffDropdown(false);
+                  } else {
+                    openStaffDropdown();
+                  }
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
+              >
+                <Icon
+                  icon="solar:alt-arrow-down-linear"
+                  className={`h-4 w-4 transition-transform ${showStaffDropdown ? "rotate-180" : ""}`}
+                />
+              </button>
+            )}
             {showStaffDropdown && selectedBranchId && (
               <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-stone-200 bg-white shadow-lg">
                 {filteredStaff.length === 0 ? (
@@ -406,9 +495,11 @@ export default function AdminStaffHolidaysPage() {
                     ไม่พบพนักงาน
                   </div>
                 ) : (() => {
-                  const filtered = filteredStaff.filter((s) =>
-                    s.name.toLowerCase().includes(staffSearchQuery.toLowerCase())
-                  );
+                  const filtered = isStaffSearching
+                    ? filteredStaff.filter((s) =>
+                        s.name.toLowerCase().includes(staffSearchQuery.toLowerCase())
+                      )
+                    : filteredStaff;
                   return filtered.length === 0 ? (
                     <div className="px-3 py-2 text-xs text-stone-500">
                       ไม่พบพนักงาน
@@ -423,9 +514,11 @@ export default function AdminStaffHolidaysPage() {
                             ? "bg-primary-50 text-primary-700"
                             : "text-stone-700 hover:bg-stone-50"
                         }`}
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => {
-                          setSelectedStaffId(s.id);
-                          setStaffSearchQuery(s.name);
+                          setSelection({ staffId: s.id });
+                          setStaffSearchQuery("");
+                          setIsStaffSearching(false);
                           setShowStaffDropdown(false);
                         }}
                       >
@@ -548,8 +641,8 @@ export default function AdminStaffHolidaysPage() {
       {activeTab === 'calendar' && selectedStaffId && (
         <div className="space-y-4">
           {[0, 1, 2].map((monthOffset) => {
-            const displayMonth = new Date();
-            displayMonth.setMonth(displayMonth.getMonth() + monthOffset);
+            const now = new Date();
+            const displayMonth = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
             const year = displayMonth.getFullYear();
             const month = displayMonth.getMonth();
             const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -562,17 +655,12 @@ export default function AdminStaffHolidaysPage() {
               monthDays.push(null);
             }
             for (let day = 1; day <= daysInMonth; day++) {
-              const date = new Date(year, month, day);
-              if (date >= today) {
-                const dateStr = toISODateString(date);
-                const holiday = holidays.find(h => h.date === dateStr);
-                monthDays.push(holiday || {
-                  date: dateStr,
-                  isHoliday: false,
-                });
-              } else {
-                monthDays.push(null);
-              }
+              const dateStr = toISODateString(new Date(year, month, day));
+              const holiday = holidays.find(h => h.date === dateStr);
+              monthDays.push(holiday || {
+                date: dateStr,
+                isHoliday: false,
+              });
             }
 
             return (
@@ -607,6 +695,43 @@ export default function AdminStaffHolidaysPage() {
 
                         const date = new Date(day.date + 'T00:00:00');
                         const isToday = date.toDateString() === new Date().toDateString();
+                        const isPending = pendingDates.has(day.date);
+                        const isOn = !day.isHoliday;
+                        const isPast = date < today;
+
+                        // Past dates are shown for reference only - label, no switch
+                        if (isPast) {
+                          return (
+                            <div
+                              key={day.date}
+                              className={`relative h-14 rounded-md border border-dashed p-1 ${
+                                day.isHoliday
+                                  ? "border-red-200 bg-red-50/50"
+                                  : "border-stone-200 bg-stone-50"
+                              }`}
+                              title={`${date.getDate()} ${thaiMonths[month]} - ${isOn ? "ทำงาน" : "วันหยุด"} (ผ่านมาแล้ว)`}
+                            >
+                              <div className="flex h-full flex-col items-center justify-center gap-1">
+                                <span
+                                  className={`text-[11px] font-medium leading-none ${
+                                    day.isHoliday ? "text-red-400" : "text-stone-400"
+                                  }`}
+                                >
+                                  {date.getDate()}
+                                </span>
+                                <span
+                                  className={`rounded-full px-1.5 py-[1px] text-[8px] font-semibold leading-tight ${
+                                    isOn
+                                      ? "bg-stone-200 text-stone-500"
+                                      : "bg-red-100 text-red-500"
+                                  }`}
+                                >
+                                  {isOn ? "ON" : "OFF"}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }
 
                         return (
                           <div
@@ -617,9 +742,9 @@ export default function AdminStaffHolidaysPage() {
                                 : "bg-white hover:border-primary-300 hover:bg-stone-50"
                             }`}
                           >
-                            <div className="flex h-full flex-col items-center justify-center gap-0.5">
+                            <div className="flex h-full flex-col items-center justify-center gap-1">
                               <span
-                                className={`text-[11px] font-medium ${
+                                className={`text-[11px] font-medium leading-none ${
                                   day.isHoliday
                                     ? "text-red-700"
                                     : isToday
@@ -631,16 +756,29 @@ export default function AdminStaffHolidaysPage() {
                               </span>
                               <button
                                 type="button"
+                                role="switch"
+                                aria-checked={isOn}
+                                aria-label={`${date.getDate()} ${isOn ? "ทำงาน" : "วันหยุด"}`}
+                                title={isOn ? "ทำงาน (ON)" : "วันหยุด (OFF)"}
                                 onClick={() => toggleHoliday(day.date)}
-                                disabled={submitting}
-                                className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium transition-colors ${
-                                  day.isHoliday
-                                    ? "bg-red-100 border border-red-300 text-red-700 hover:bg-red-200"
-                                    : "bg-green-100 border border-green-300 text-green-700 hover:bg-green-200"
-                                } disabled:opacity-50`}
+                                disabled={isPending}
+                                className={`relative inline-flex h-[15px] w-[28px] shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-wait focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1 ${
+                                  isOn ? "bg-green-500 hover:bg-green-600" : "bg-red-400 hover:bg-red-500"
+                                } ${isPending ? "animate-pulse opacity-60" : ""}`}
                               >
-                                {day.isHoliday ? "OFF" : "ON"}
+                                <span
+                                  className={`inline-block h-[11px] w-[11px] rounded-full bg-white shadow-sm transition-transform ${
+                                    isOn ? "translate-x-[15px]" : "translate-x-[2px]"
+                                  }`}
+                                />
                               </button>
+                              <span
+                                className={`text-[8px] font-semibold leading-none ${
+                                  isOn ? "text-green-700" : "text-red-700"
+                                }`}
+                              >
+                                {isOn ? "ON" : "OFF"}
+                              </span>
                             </div>
                           </div>
                         );
@@ -663,6 +801,16 @@ export default function AdminStaffHolidaysPage() {
   );
 }
 
-
-
-
+export default function AdminStaffHolidaysPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="rounded-lg border border-stone-200 bg-white p-8 text-center text-sm text-stone-500">
+          กำลังโหลด...
+        </div>
+      }
+    >
+      <AdminStaffHolidaysContent />
+    </Suspense>
+  );
+}
