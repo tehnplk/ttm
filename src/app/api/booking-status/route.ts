@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { isWithinBookingHours, BOOKING_HOURS_MESSAGE } from "@/lib/bookingHours";
 
 // Get booking status (public API)
 export async function GET() {
+  if (!isWithinBookingHours()) {
+    return NextResponse.json({ enabled: false, message: BOOKING_HOURS_MESSAGE });
+  }
+
   try {
     // Use raw query to avoid Prisma Client regeneration issues
     // Try uppercase first, then lowercase (for Linux case-sensitive)

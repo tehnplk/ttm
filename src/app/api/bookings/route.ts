@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { z } from 'zod';
+import { isWithinBookingHours, BOOKING_HOURS_MESSAGE } from '@/lib/bookingHours';
 
 // Schema for input validation
 const bookingSchema = z.object({
@@ -42,6 +43,13 @@ function getWeekRangeFromDate(dateStr: string): { weekStart: string; weekEnd: st
 }
 
 export async function POST(request: NextRequest) {
+  if (!isWithinBookingHours()) {
+    return NextResponse.json(
+      { error: 'Outside booking hours', message: BOOKING_HOURS_MESSAGE },
+      { status: 403 }
+    );
+  }
+
   try {
     // Check if booking is enabled - MANDATORY CHECK
     let bookingEnabled = "yes"; // Default to enabled
