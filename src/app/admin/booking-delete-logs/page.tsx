@@ -8,6 +8,7 @@ type DeleteLogRow = {
   bookingId: number;
   customerName: string;
   customerPhone: string;
+  lineId: string | null;
   bookDate: string | null;
   bookTime: string | null;
   staffId: number | null;
@@ -127,6 +128,7 @@ export default function AdminBookingDeleteLogsPage() {
                   <th className="px-4 py-3 text-xs font-semibold text-stone-700">Booking ID</th>
                   <th className="px-4 py-3 text-xs font-semibold text-stone-700">ลูกค้า</th>
                   <th className="px-4 py-3 text-xs font-semibold text-stone-700">เบอร์โทร</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-stone-700">LINE ID</th>
                   <th className="px-4 py-3 text-xs font-semibold text-stone-700">วันที่จอง</th>
                   <th className="px-4 py-3 text-xs font-semibold text-stone-700">เวลา</th>
                   <th className="px-4 py-3 text-xs font-semibold text-stone-700">พนักงาน</th>
@@ -159,6 +161,9 @@ export default function AdminBookingDeleteLogsPage() {
                     </td>
                     <td className="px-4 py-3 text-xs text-stone-600 font-mono">
                       {log.customerPhone}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-stone-600 font-mono">
+                      {log.lineId || '-'}
                     </td>
                     <td className="px-4 py-3 text-xs text-stone-700">
                       {log.bookDate

@@ -144,6 +144,7 @@ model BookingDeleteLog {
   bookingId    Int       @map("booking_id")
   customerName String    @map("customer_name") @db.VarChar(255)
   customerPhone String   @map("customer_phone") @db.VarChar(255)
+  lineId       String?   @map("line_id") @db.VarChar(255)
   bookDate     DateTime  @map("book_date") @db.Date
   bookTime     String?   @map("book_time") @db.VarChar(255)
   staffId      Int?      @map("staff_id")

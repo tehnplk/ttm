@@ -272,11 +272,11 @@ export async function DELETE(
       // Use raw SQL to insert log (in case Prisma model is not yet generated)
       await prisma.$executeRaw`
         INSERT INTO booking_delete_log (
-          booking_id, customer_name, customer_phone, book_date, book_time,
+          booking_id, customer_name, customer_phone, line_id, book_date, book_time,
           staff_id, staff_name, branch_id, branch_name, service_id, service_name,
           deleted_by, deleted_at
         ) VALUES (
-          ${bookingId}, ${booking.bookerName}, ${booking.bookerTel}, 
+          ${bookingId}, ${booking.bookerName}, ${booking.bookerTel}, ${booking.lineId || null},
           ${booking.bookDate}, ${booking.bookTime || null},
           ${booking.empId || null}, ${staffName || null},
           ${booking.branchId || null}, ${booking.branch?.name || null},
