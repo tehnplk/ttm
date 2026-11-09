@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { staffOnShift } from "@/lib/overtime-server";
 
 // ป้องกัน cache บน server/CDN – ข้อมูลจำนวนคนว่างต้อง real-time
 export const dynamic = "force-dynamic";
@@ -83,7 +84,6 @@ export async function GET(request: NextRequest) {
         .filter((e) => e.branch_id === null || e.branch_id === branchIdNum)
         .map((e) => String(e.id))
     );
-    const totalStaff = branchStaffIds.size;
 
     // 3. Holiday staff for this date and branch
     let holidayStaffIds: Set<string> = new Set();
@@ -152,12 +152,18 @@ export async function GET(request: NextRequest) {
       `;
       existingBookings.forEach((b) => bookedStaffIds.add(String(b.emp_id)));
 
+      // Overtime round: only rostered staff count (null = not an overtime round)
+      const onShift = await staffOnShift(dateStr, startTime);
+      const eligibleIds = onShift
+        ? new Set(Array.from(branchStaffIds).filter((id) => onShift.has(id)))
+        : branchStaffIds;
+
       const unavailable = new Set([
-        ...Array.from(holidayStaffIds).filter((id) => branchStaffIds.has(id)),
-        ...Array.from(offStaffIds).filter((id) => branchStaffIds.has(id)),
-        ...Array.from(bookedStaffIds).filter((id) => branchStaffIds.has(id)),
+        ...Array.from(holidayStaffIds).filter((id) => eligibleIds.has(id)),
+        ...Array.from(offStaffIds).filter((id) => eligibleIds.has(id)),
+        ...Array.from(bookedStaffIds).filter((id) => eligibleIds.has(id)),
       ]);
-      const availableCount = totalStaff - unavailable.size;
+      const availableCount = eligibleIds.size - unavailable.size;
 
       slotsWithCount.push({
         time: timeStr,

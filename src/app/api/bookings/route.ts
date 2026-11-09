@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { z } from 'zod';
 import { isWithinBookingHours, BOOKING_HOURS_MESSAGE } from '@/lib/bookingHours';
+import { staffOnShift } from '@/lib/overtime-server';
 
 // Schema for input validation
 const bookingSchema = z.object({
@@ -210,6 +211,20 @@ export async function POST(request: NextRequest) {
     }
     
     console.log(`[Booking] Date received: "${date}", parsed to: "${bookDateStr}"`);
+
+    // Overtime round: only staff rostered for that weekday + round can be booked.
+    // First HH:mm in bookTime is the slot start for every stored format.
+    const slotStart = bookTime?.match(/\d{2}:\d{2}/)?.[0] ?? "";
+    const onShift = await staffOnShift(bookDateStr, slotStart);
+    if (onShift && !onShift.has(String(empId))) {
+      return NextResponse.json(
+        {
+          error: 'Staff not on overtime shift',
+          message: 'พนักงานไม่ได้อยู่เวรนอกเวลารอบนี้ กรุณาเลือกพนักงานคนอื่น',
+        },
+        { status: 409 }
+      );
+    }
 
     // Check if slot is already booked before creating new booking
     // This prevents race condition where multiple users try to book the same slot

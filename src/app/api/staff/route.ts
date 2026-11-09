@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { staffOnShift } from "@/lib/overtime-server";
 
 // List staff for public booking page (using Employee model from ttm.sql)
 export async function GET(request: Request) {
@@ -139,6 +140,8 @@ export async function GET(request: Request) {
     // Check existing bookings for the selected date and time
     let bookedStaffIds: Set<string> = new Set();
     let offStaffIds: Set<string> = new Set();
+    // Overtime round: only rostered staff are bookable (null = not an overtime round)
+    let onShiftIds: Set<string> | null = null;
     if (date) {
       try {
         // Keep date as string to avoid timezone issues when querying database
@@ -205,6 +208,8 @@ export async function GET(request: Request) {
             // Just start time: "15:00"
             startTime = timeStr;
           }
+
+          onShiftIds = await staffOnShift(dateStr, startTime);
 
           console.log(`[Staff API] Checking bookings for date="${dateStr}", time="${time}"`);
           console.log(`[Staff API] Normalized time: "${timeStr}", Parsed: startTime="${startTime}", endTime="${endTime}"`);
@@ -307,7 +312,10 @@ export async function GET(request: Request) {
 
     // Show all employees (don't filter out)
     // Staff on holiday or "off" will be marked with flags and disabled in the UI
-    const filteredStaff = employees.map((e) => {
+    // Overtime round: list only staff rostered for it
+    const rosterIds = onShiftIds;
+    const listedEmployees = rosterIds ? employees.filter((e) => rosterIds.has(String(e.id))) : employees;
+    const filteredStaff = listedEmployees.map((e) => {
       const employeeId = String(e.id);
       const isOnHoliday = holidayStaffIds.has(employeeId);
       const isOff = offStaffIds.has(employeeId);

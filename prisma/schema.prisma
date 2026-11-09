@@ -223,6 +223,23 @@ model StaffHoliday {
   @@map("staffholiday")
 }
 
+// Evening overtime shift roster: one row per employee per week.
+// weekStart = Monday of the week; shifts = JSON array of "<weekday>-<round>" keys,
+// weekday 1=Mon..5=Fri, round 1|2
+model OvertimeShift {
+  id        Int       @id @default(autoincrement())
+  empId     Int       @map("emp_id")
+  weekStart DateTime  @map("week_start") @db.Date
+  shifts    String    @default("[]") @db.Text
+  note      String?   @db.VarChar(500)
+  createdAt DateTime? @default(now()) @map("created_at") @db.DateTime
+  updatedAt DateTime? @updatedAt @map("updated_at") @db.DateTime
+
+  @@unique([empId, weekStart])
+  @@index([weekStart])
+  @@map("overtime_shift")
+}
+
 // Shop configuration table
 model ShopConfig {
   id              String  @id @db.VarChar(191)

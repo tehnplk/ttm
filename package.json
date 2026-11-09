@@ -29,7 +29,8 @@
     "react-dom": "19.2.0",
     "react-leaflet": "^5.0.0",
     "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1"
+    "socket.io-client": "^4.8.1",
+    "sweetalert2": "^11.26.25"
   },
   "devDependencies": {
     "@iconify/react": "^6.0.2",

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { TimeSlot } from '../types';
 import { Loader2 } from 'lucide-react';
+import { overtimeSlot } from '@/lib/overtime';
 
 interface TimeSelectionProps {
   selectedDate: Date;
@@ -139,6 +140,17 @@ export const TimeSelection: React.FC<TimeSelectionProps> = ({
     return () => { cancelled = true; };
   }, [branchId, selectedDate]);
 
+  // Local date, not toISOString (UTC shifts the day)
+  const selectedDateStr = selectedDate
+    ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`
+    : '';
+  const weekday = selectedDate ? selectedDate.getDay() : -1;
+  const isWeekend = weekday === 0 || weekday === 6;
+  const isOvertime = (slot: TimeSlot) => !!overtimeSlot(selectedDateStr, slot.time.split(' - ')[0]);
+  // Overtime rounds run Monday to Friday only
+  const regularSlots = slots.filter((slot) => !isOvertime(slot));
+  const overtimeSlots = isWeekend ? [] : slots.filter(isOvertime);
+
   return (
     <div className="space-y-6 animate-fade-in pb-20">
       {loading ? (
@@ -150,8 +162,28 @@ export const TimeSelection: React.FC<TimeSelectionProps> = ({
           {error}
         </div>
       ) : (
+        <>
         <div className="grid grid-cols-3 gap-4">
-        {slots.map((slot) => {
+          {regularSlots.map(renderSlot)}
+        </div>
+        {overtimeSlots.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-indigo-700">
+              <span className="h-px flex-1 bg-indigo-100" />
+              รอบนอกเวลา (ช่วงเย็น)
+              <span className="h-px flex-1 bg-indigo-100" />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              {overtimeSlots.map(renderSlot)}
+            </div>
+          </div>
+        )}
+        </>
+      )}
+    </div>
+  );
+
+  function renderSlot(slot: TimeSlot) {
           const isSelected = selectedTime?.id === slot.id;
           const normalizeKey = (t: string) => t.replace(/(\d{2}:\d{2}):\d{2}/g, '$1');
           const availableCount = availableCountByTime[slot.time] ?? availableCountByTime[normalizeKey(slot.time)];
@@ -165,10 +197,10 @@ export const TimeSelection: React.FC<TimeSelectionProps> = ({
               onClick={() => onSelect(slot)}
               className={`
                 py-3 rounded-xl border-2 font-semibold text-sm transition-all relative overflow-hidden touch-manipulation
-                ${isDisabled 
-                  ? 'bg-stone-100 text-stone-300 border-stone-100 cursor-not-allowed' 
-                  : isSelected 
-                    ? 'bg-primary-600 text-white border-primary-600 shadow-lg scale-105 ring-2 ring-primary-300 ring-offset-1' 
+                ${isDisabled
+                  ? 'bg-stone-100 text-stone-300 border-stone-100 cursor-not-allowed'
+                  : isSelected
+                    ? 'bg-primary-600 text-white border-primary-600 shadow-lg scale-105 ring-2 ring-primary-300 ring-offset-1'
                     : 'bg-white text-stone-700 border-stone-200 hover:border-primary-400 hover:bg-stone-50'}
               `}
             >
@@ -185,9 +217,5 @@ export const TimeSelection: React.FC<TimeSelectionProps> = ({
               )}
             </button>
           );
-        })}
-        </div>
-      )}
-    </div>
-  );
+  }
 };

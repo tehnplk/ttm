@@ -70,6 +70,7 @@ export default function AdminLayout({
     if (pathname.startsWith("/admin/schedule")) return "ตารางหยุดพนักงาน";
     if (pathname.startsWith("/admin/reports")) return "รายงาน";
     if (pathname.startsWith("/admin/opening-hours")) return "ตั้งค่าเวลา";
+    if (pathname.startsWith("/admin/overtime-shifts")) return "จัดเวรนอกเวลา";
     if (pathname.startsWith("/admin/settings")) return "ตั้งค่าการจอง";
     if (pathname.startsWith("/admin/notifications")) return "ตั้งค่าการแจ้งเตือน";
     if (pathname.startsWith("/admin/broadcasts")) return "การส่ง Broadcast";
@@ -87,6 +88,7 @@ export default function AdminLayout({
     if (pathname.startsWith("/admin/schedule")) return "solar:clock-circle-outline";
     if (pathname.startsWith("/admin/reports")) return "solar:chart-square-linear";
     if (pathname.startsWith("/admin/opening-hours")) return "solar:clock-circle-linear";
+    if (pathname.startsWith("/admin/overtime-shifts")) return "solar:calendar-date-linear";
     if (pathname.startsWith("/admin/settings")) return "solar:settings-linear";
     if (pathname.startsWith("/admin/notifications")) return "solar:bell-bold";
     if (pathname.startsWith("/admin/broadcasts")) return "solar:radio-bold";
@@ -142,6 +144,12 @@ export default function AdminLayout({
       return {
         shadow: "shadow-teal-200/30",
         dots: ["bg-teal-300/20", "bg-teal-400/25", "bg-teal-200/30", "bg-teal-300/20"],
+      };
+    }
+    if (pathname.startsWith("/admin/overtime-shifts")) {
+      return {
+        shadow: "shadow-sky-200/30",
+        dots: ["bg-sky-300/20", "bg-sky-400/25", "bg-sky-200/30", "bg-sky-300/20"],
       };
     }
     if (pathname.startsWith("/admin/settings")) {
@@ -381,6 +389,22 @@ export default function AdminLayout({
                   }`}
               />
               <span>ตั้งค่าเวลา</span>
+            </Link>
+            <Link
+              href="/admin/overtime-shifts"
+              className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${isActive("/admin/overtime-shifts")
+                ? "bg-linear-to-t from-[#C8CCFC] to-[#F3F3FB] text-purple-800"
+                : "text-stone-800 hover:bg-stone-50"
+                }`}
+            >
+              <Icon
+                icon="solar:calendar-date-linear"
+                className={`h-4 w-4 ${isActive("/admin/overtime-shifts")
+                  ? "text-purple-800"
+                  : "text-stone-500"
+                  }`}
+              />
+              <span>จัดเวรนอกเวลา</span>
             </Link>
             <Link
               href="/admin/reports"

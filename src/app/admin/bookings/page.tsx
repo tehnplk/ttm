@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@iconify/react";
 import { useSession } from "next-auth/react";
+import { overtimeSlot, weekStartOf } from "@/lib/overtime";
 
 type BookingRow = {
   id: string;
@@ -85,6 +86,7 @@ export default function AdminBookingsPage() {
   const [listBranchFilter, setListBranchFilter] = useState<string>("");
   const [openingHours, setOpeningHours] = useState<Array<{ startTime: string; endTime: string }>>([]);
   const [staffHolidays, setStaffHolidays] = useState<Set<string>>(new Set()); // Set of staff IDs who have holiday on selected date
+  const [overtimeRoster, setOvertimeRoster] = useState<Map<string, Set<string>>>(new Map()); // staffId → shift keys for the selected date's week
   const [searchStaff, setSearchStaff] = useState("");
   const [searchBooker, setSearchBooker] = useState("");
   const [statusFilter, setStatusFilter] = useState<'all' | 'self' | 'arrived' | 'waiting'>('all');
@@ -239,6 +241,32 @@ export default function AdminBookingsPage() {
     void loadBookings();
     void loadOptions();
   }, []);
+
+  // Overtime roster for the week of the selected date (view2 overtime columns)
+  useEffect(() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return;
+    let cancelled = false;
+    fetch(`/api/admin/overtime-shifts?week=${weekStartOf(selectedDate)}`)
+      .then((res) => (res.ok ? res.json() : { shifts: [] }))
+      .then((data) => {
+        if (cancelled) return;
+        setOvertimeRoster(
+          new Map((data.shifts ?? []).map((r: { empId: number; shifts: string[] }) => [String(r.empId), new Set(r.shifts)])),
+        );
+      })
+      .catch((err) => console.error("Failed to load overtime roster", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate]);
+
+  // View2 columns: overtime rounds run Monday to Friday only, so drop them on weekends.
+  // `index` keeps the slot's position in openingHours, which the stored slot id ("t-<index>-...") uses.
+  const selectedWeekday = new Date(`${selectedDate}T00:00:00Z`).getUTCDay();
+  const isWeekend = selectedWeekday === 0 || selectedWeekday === 6;
+  const dayHours = openingHours
+    .map((hour, index) => ({ ...hour, index }))
+    .filter((hour) => !(isWeekend && overtimeSlot(selectedDate, hour.startTime)));
 
   // Auto-select first branch when branches are loaded (for view2)
   useEffect(() => {
@@ -1533,19 +1561,25 @@ export default function AdminBookingsPage() {
                 กำลังโหลดข้อมูล...
               </div>
             ) : (
-              <table className="min-w-full border-collapse text-xs">
+              <table
+                className="w-full table-fixed border-collapse text-xs"
+                style={{ minWidth: `${48 + 200 + dayHours.length * 140}px` }}
+              >
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-100/50">
-                    <th className="px-3 py-2 text-left font-semibold text-stone-700">#</th>
-                    <th className="px-3 py-2 text-left font-semibold text-stone-700">พนักงาน</th>
-                    {openingHours.length > 0 ? (
-                      openingHours.map((hour, index) => {
+                    <th className="w-12 px-3 py-2 text-left font-semibold text-stone-700">#</th>
+                    <th className="w-[200px] px-3 py-2 text-left font-semibold text-stone-700">พนักงาน</th>
+                    {dayHours.length > 0 ? (
+                      dayHours.map((hour, index) => {
                         return (
                           <th
                             key={index}
-                            className="px-3 py-2 text-center font-semibold text-stone-700"
+                            className={`px-3 py-2 text-center font-semibold text-stone-700 ${overtimeSlot(selectedDate, hour.startTime) ? "bg-indigo-50" : ""}`}
                           >
                             {hour.startTime} - {hour.endTime}
+                            {overtimeSlot(selectedDate, hour.startTime) && (
+                              <div className="text-[10px] font-medium text-indigo-600">นอกเวลา</div>
+                            )}
                           </th>
                         );
                       })
@@ -1718,8 +1752,8 @@ export default function AdminBookingsPage() {
                     }
 
                     // Time slots from opening hours
-                    const timeSlots = openingHours.length > 0
-                      ? openingHours.map(hour => `${hour.startTime} - ${hour.endTime}`)
+                    const timeSlots = dayHours.length > 0
+                      ? dayHours.map(hour => `${hour.startTime} - ${hour.endTime}`)
                       : [];
 
                     if (timeSlots.length === 0) {
@@ -1939,10 +1973,10 @@ export default function AdminBookingsPage() {
                                         <span className="text-white text-[10px] font-bold">✓</span>
                                       </div>
                                     )}
-                                    <div className={`font-semibold mb-1 text-sm leading-tight ${colors.title}`}>
+                                    <div className={`font-semibold mb-0.5 text-xs leading-tight ${colors.title}`}>
                                       {booking.customerName}
                                     </div>
-                                    <div className={`font-mono text-xs font-medium ${colors.phone}`}>
+                                    <div className={`font-mono text-[11px] font-medium ${colors.phone}`}>
                                       {booking.customerPhone}
                                     </div>
                                   </div>
@@ -1950,19 +1984,32 @@ export default function AdminBookingsPage() {
                               );
                             }
 
+                            // Overtime slot: only rostered staff can take a booking
+                            const ot = dayHours[slotIndex]
+                              ? overtimeSlot(selectedDate, dayHours[slotIndex].startTime)
+                              : null;
+                            if (ot && !overtimeRoster.get(staffId)?.has(ot.key)) {
+                              return (
+                                <td key={slotIndex} className="px-2 py-2 text-center text-[11px] text-stone-400 bg-stone-100/70">
+                                  ไม่มีเวร
+                                </td>
+                              );
+                            }
+
                             // Empty slot - make it clickable to add booking
                             return (
-                              <td 
-                                key={slotIndex} 
-                                className="px-2 py-2 text-center text-stone-300 cursor-pointer hover:bg-primary-50 hover:text-primary-600 transition-colors group relative"
+                              <td
+                                key={slotIndex}
+                                className={`px-2 py-2 text-center text-stone-300 cursor-pointer hover:bg-primary-50 hover:text-primary-600 transition-colors group relative ${ot ? "bg-indigo-50/60" : ""}`}
                                 onClick={() => {
                                   if (!selectedBranchId) {
                                     alert('กรุณาเลือกสาขาก่อน');
                                     return;
                                   }
 
-                                  const timeSlotId = openingHours[slotIndex] 
-                                    ? `t-${slotIndex}-${openingHours[slotIndex].startTime}-${openingHours[slotIndex].endTime}`
+                                  const hour = dayHours[slotIndex];
+                                  const timeSlotId = hour
+                                    ? `t-${hour.index}-${hour.startTime}-${hour.endTime}`
                                     : '';
 
                                   const defaultServiceId = services.length > 0 ? services[0].id : "";
