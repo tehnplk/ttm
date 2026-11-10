@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { MAX_OVERTIME_ROUNDS, SLOT_TYPE_LABELS } from "@/lib/overtime";
 
 // Get time slots
 export async function GET(request: Request) {
@@ -17,8 +18,9 @@ export async function GET(request: Request) {
       branch_id: string;
       start_time: string;
       end_time: string;
+      slot_type: string;
     }>>`
-      SELECT id, branch_id, start_time, end_time
+      SELECT id, branch_id, start_time, end_time, slot_type
       FROM opening_hours
       WHERE branch_id = ${branchId}
       ORDER BY start_time ASC
@@ -30,6 +32,7 @@ export async function GET(request: Request) {
         branchId: h.branch_id,
         startTime: h.start_time,
         endTime: h.end_time,
+        slotType: h.slot_type,
       })),
     });
   } catch (error: any) {
@@ -65,6 +68,16 @@ export async function POST(request: Request) {
       );
     }
 
+    const slotTypeOf = (slot: { slotType?: unknown }) =>
+      typeof slot.slotType === "string" && slot.slotType in SLOT_TYPE_LABELS ? slot.slotType : "regular";
+
+    if (timeSlots.filter((slot) => slotTypeOf(slot) === "overtime").length > MAX_OVERTIME_ROUNDS) {
+      return NextResponse.json(
+        { error: `ตั้งช่วงเวลานอกเวลาได้ไม่เกิน ${MAX_OVERTIME_ROUNDS} ช่วงต่อสาขา` },
+        { status: 400 },
+      );
+    }
+
     // Delete all existing records for this branch
     await prisma.$executeRaw`
       DELETE FROM opening_hours WHERE branch_id = ${branchId}
@@ -73,8 +86,8 @@ export async function POST(request: Request) {
     // Insert new records
     for (const slot of timeSlots) {
       await prisma.$executeRaw`
-        INSERT INTO opening_hours (branch_id, start_time, end_time)
-        VALUES (${branchId}, ${slot.startTime}, ${slot.endTime})
+        INSERT INTO opening_hours (branch_id, start_time, end_time, slot_type)
+        VALUES (${branchId}, ${slot.startTime}, ${slot.endTime}, ${slotTypeOf(slot)})
       `;
     }
 

@@ -209,7 +209,7 @@ export async function GET(request: Request) {
             startTime = timeStr;
           }
 
-          onShiftIds = await staffOnShift(dateStr, startTime);
+          onShiftIds = branchId ? await staffOnShift(branchId, dateStr, startTime) : null;
 
           console.log(`[Staff API] Checking bookings for date="${dateStr}", time="${time}"`);
           console.log(`[Staff API] Normalized time: "${timeStr}", Parsed: startTime="${startTime}", endTime="${endTime}"`);

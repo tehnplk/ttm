@@ -20,8 +20,9 @@ export async function GET(request: Request) {
       branch_id: string;
       start_time: string;
       end_time: string;
+      slot_type: string;
     }>>`
-      SELECT id, branch_id, start_time, end_time
+      SELECT id, branch_id, start_time, end_time, slot_type
       FROM opening_hours
       WHERE branch_id = ${branchId}
       ORDER BY start_time ASC
@@ -33,6 +34,7 @@ export async function GET(request: Request) {
         branchId: h.branch_id,
         startTime: h.start_time,
         endTime: h.end_time,
+        slotType: h.slot_type,
       })),
     });
     res.headers.set("Cache-Control", "no-store, no-cache, max-age=0, must-revalidate");

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@iconify/react";
 import { useSession } from "next-auth/react";
-import { overtimeSlot, weekStartOf } from "@/lib/overtime";
+import { overtimeRound, rosterKey, weekStartOf } from "@/lib/overtime";
 
 type BookingRow = {
   id: string;
@@ -84,7 +84,7 @@ export default function AdminBookingsPage() {
   const [selectedBranchId, setSelectedBranchId] = useState<string>("");
   // List view branch filter
   const [listBranchFilter, setListBranchFilter] = useState<string>("");
-  const [openingHours, setOpeningHours] = useState<Array<{ startTime: string; endTime: string }>>([]);
+  const [openingHours, setOpeningHours] = useState<Array<{ startTime: string; endTime: string; slotType?: string }>>([]);
   const [staffHolidays, setStaffHolidays] = useState<Set<string>>(new Set()); // Set of staff IDs who have holiday on selected date
   const [overtimeRoster, setOvertimeRoster] = useState<Map<string, Set<string>>>(new Map()); // staffId → shift keys for the selected date's week
   const [searchStaff, setSearchStaff] = useState("");
@@ -264,9 +264,10 @@ export default function AdminBookingsPage() {
   // `index` keeps the slot's position in openingHours, which the stored slot id ("t-<index>-...") uses.
   const selectedWeekday = new Date(`${selectedDate}T00:00:00Z`).getUTCDay();
   const isWeekend = selectedWeekday === 0 || selectedWeekday === 6;
+  const isOvertimeHour = (startTime: string) => overtimeRound(openingHours, startTime) !== null;
   const dayHours = openingHours
     .map((hour, index) => ({ ...hour, index }))
-    .filter((hour) => !(isWeekend && overtimeSlot(selectedDate, hour.startTime)));
+    .filter((hour) => !(isWeekend && isOvertimeHour(hour.startTime)));
 
   // Auto-select first branch when branches are loaded (for view2)
   useEffect(() => {
@@ -1574,10 +1575,10 @@ export default function AdminBookingsPage() {
                         return (
                           <th
                             key={index}
-                            className={`px-3 py-2 text-center font-semibold text-stone-700 ${overtimeSlot(selectedDate, hour.startTime) ? "bg-indigo-50" : ""}`}
+                            className={`px-3 py-2 text-center font-semibold text-stone-700 ${isOvertimeHour(hour.startTime) ? "bg-indigo-50" : ""}`}
                           >
                             {hour.startTime} - {hour.endTime}
-                            {overtimeSlot(selectedDate, hour.startTime) && (
+                            {isOvertimeHour(hour.startTime) && (
                               <div className="text-[10px] font-medium text-indigo-600">นอกเวลา</div>
                             )}
                           </th>
@@ -1985,9 +1986,8 @@ export default function AdminBookingsPage() {
                             }
 
                             // Overtime slot: only rostered staff can take a booking
-                            const ot = dayHours[slotIndex]
-                              ? overtimeSlot(selectedDate, dayHours[slotIndex].startTime)
-                              : null;
+                            const otRound = dayHours[slotIndex] ? overtimeRound(openingHours, dayHours[slotIndex].startTime) : null;
+                            const ot = otRound !== null ? rosterKey(selectedDate, otRound) : null;
                             if (ot && !overtimeRoster.get(staffId)?.has(ot.key)) {
                               return (
                                 <td key={slotIndex} className="px-2 py-2 text-center text-[11px] text-stone-400 bg-stone-100/70">

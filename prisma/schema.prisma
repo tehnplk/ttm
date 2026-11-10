@@ -259,6 +259,8 @@ model OpeningHours {
   branchId  String    @map("branch_id") @db.VarChar(255)
   startTime String    @map("start_time") @db.VarChar(5)
   endTime   String    @map("end_time") @db.VarChar(5)
+  // "regular" (ในเวลา) or "overtime" (นอกเวลา, bookable only with rostered staff)
+  slotType  String    @default("regular") @map("slot_type") @db.VarChar(20)
   createdAt DateTime? @default(now()) @map("created_at") @db.DateTime
   updatedAt DateTime? @updatedAt @map("updated_at") @db.DateTime
 

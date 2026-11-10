@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "@iconify/react";
+import { MAX_OVERTIME_ROUNDS, SLOT_TYPE_LABELS, type SlotType } from "@/lib/overtime";
 
 type TimeSlot = {
   id?: number;
   branchId: string;
   startTime: string; // HH:mm format
   endTime: string; // HH:mm format
+  slotType: SlotType;
 };
 
 type Branch = {
@@ -25,6 +27,10 @@ export default function AdminOpeningHoursPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  function handleSlotTypeChange(index: number, slotType: SlotType) {
+    setTimeSlots((prev) => prev.map((slot, i) => (i === index ? { ...slot, slotType } : slot)));
+  }
 
   // Update existing slot
   function handleSlotChange(index: number, field: "startTime" | "endTime", value: string) {
@@ -66,7 +72,9 @@ export default function AdminOpeningHoursPage() {
       const res = await fetch(`/api/admin/opening-hours?branchId=${selectedBranchId}`);
       const data = await res.json();
       if (res.ok && data.timeSlots) {
-        setTimeSlots(data.timeSlots);
+        setTimeSlots(
+          data.timeSlots.map((s: TimeSlot) => ({ ...s, slotType: s.slotType === "overtime" ? "overtime" : "regular" })),
+        );
       } else {
         setTimeSlots([]);
       }
@@ -133,7 +141,7 @@ export default function AdminOpeningHoursPage() {
       return;
     }
 
-    setTimeSlots([...timeSlots, { ...newSlot, branchId: selectedBranchId }]);
+    setTimeSlots([...timeSlots, { ...newSlot, branchId: selectedBranchId, slotType: "regular" }]);
     setNewSlot({ startTime: "08:30", endTime: "09:30" });
     setError(null);
   }
@@ -171,6 +179,10 @@ export default function AdminOpeningHoursPage() {
         if (slot.startTime >= slot.endTime) {
           throw new Error("เวลาเริ่มต้นต้องน้อยกว่าเวลาสิ้นสุด");
         }
+      }
+
+      if (branchTimeSlots.filter((slot) => slot.slotType === "overtime").length > MAX_OVERTIME_ROUNDS) {
+        throw new Error(`ตั้งช่วงเวลานอกเวลาได้ไม่เกิน ${MAX_OVERTIME_ROUNDS} ช่วงต่อสาขา`);
       }
 
       // Check overlaps
@@ -324,6 +336,9 @@ export default function AdminOpeningHoursPage() {
               <th className="px-4 py-3 text-left text-xs font-medium text-stone-700">
                 ช่วงเวลา
               </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-stone-700">
+                ประเภท
+              </th>
               <th className="px-4 py-3 text-right text-xs font-medium text-stone-700">
                 การจัดการ
               </th>
@@ -332,7 +347,7 @@ export default function AdminOpeningHoursPage() {
           <tbody className="divide-y divide-stone-200">
             {timeSlots.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-4 py-8 text-center text-sm text-stone-500">
+                <td colSpan={4} className="px-4 py-8 text-center text-sm text-stone-500">
                   ยังไม่มีช่วงเวลา ลองกดปุ่ม "+" ด้านบนเพื่อเพิ่มช่วงเวลาใหม่
                 </td>
               </tr>
@@ -358,6 +373,22 @@ export default function AdminOpeningHoursPage() {
                         className="w-24 rounded-lg border border-stone-300 px-2 py-1 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200"
                       />
                     </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={slot.slotType}
+                      onChange={(e) => handleSlotTypeChange(index, e.target.value as SlotType)}
+                      aria-label={`ประเภทช่วงเวลา ${slot.startTime} - ${slot.endTime}`}
+                      className={`rounded-lg border px-2 py-1 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200 ${
+                        slot.slotType === "overtime" ? "border-indigo-300 bg-indigo-50 text-indigo-800" : "border-stone-300 text-stone-800"
+                      }`}
+                    >
+                      {(Object.keys(SLOT_TYPE_LABELS) as SlotType[]).map((type) => (
+                        <option key={type} value={type}>
+                          {SLOT_TYPE_LABELS[type]}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button

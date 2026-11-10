@@ -153,7 +153,7 @@ export async function GET(request: NextRequest) {
       existingBookings.forEach((b) => bookedStaffIds.add(String(b.emp_id)));
 
       // Overtime round: only rostered staff count (null = not an overtime round)
-      const onShift = await staffOnShift(dateStr, startTime);
+      const onShift = await staffOnShift(branchId, dateStr, startTime);
       const eligibleIds = onShift
         ? new Set(Array.from(branchStaffIds).filter((id) => onShift.has(id)))
         : branchStaffIds;

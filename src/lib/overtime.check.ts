@@ -1,22 +1,32 @@
 // Run: npx tsx src/lib/overtime.check.ts
 import assert from "node:assert/strict";
-import { overtimeSlot } from "./overtime";
+import { overtimeRound, rosterKey } from "./overtime";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
-const fri = overtimeSlot("2026-11-13", "18:30");
-assert.equal(fri && iso(fri.weekStart), "2026-11-09", "Friday maps to its Monday");
-assert.equal(fri?.key, "5-2", "Friday 18:30 is weekday 5 round 2");
+const hours = [
+  { startTime: "08:30", slotType: "regular" },
+  { startTime: "18:30", slotType: "overtime" },
+  { startTime: "17:00", slotType: "overtime" },
+  { startTime: "20:00", slotType: "regular" },
+];
 
-const mon = overtimeSlot("2026-11-09", "17:00");
-assert.equal(mon && iso(mon.weekStart), "2026-11-09", "Monday is its own week start");
-assert.equal(mon?.key, "1-1", "Monday 17:00 is weekday 1 round 1");
+assert.equal(overtimeRound(hours, "17:00"), 1, "earliest overtime slot is round 1");
+assert.equal(overtimeRound(hours, "18:30"), 2, "next overtime slot is round 2");
+assert.equal(overtimeRound(hours, "08:30"), null, "regular slot is not overtime");
+assert.equal(overtimeRound(hours, "20:00"), null, "regular evening slot is not overtime");
+assert.equal(overtimeRound([{ startTime: "17:00" }], "17:00"), null, "missing slot type means regular");
 
-const sun = overtimeSlot("2026-11-15", "17:00");
-assert.equal(sun && iso(sun.weekStart), "2026-11-09", "Sunday belongs to the week that started Monday");
-assert.equal(sun?.key, "0-1", "Sunday key never matches a roster entry");
+const fri = rosterKey("2026-11-13", 2);
+assert.equal(iso(fri.weekStart), "2026-11-09", "Friday maps to its Monday");
+assert.equal(fri.key, "5-2", "Friday round 2");
 
-assert.equal(overtimeSlot("2026-11-09", "08:30"), null, "daytime slot is not an overtime round");
-assert.equal(overtimeSlot("2026-11-09", "20:00"), null, "20:00 is no longer an overtime round");
+const mon = rosterKey("2026-11-09", 1);
+assert.equal(iso(mon.weekStart), "2026-11-09", "Monday is its own week start");
+assert.equal(mon.key, "1-1", "Monday round 1");
+
+const sun = rosterKey("2026-11-15", 1);
+assert.equal(iso(sun.weekStart), "2026-11-09", "Sunday belongs to the week that started Monday");
+assert.equal(sun.key, "0-1", "Sunday key never matches a roster entry");
 
 console.log("overtime checks passed");

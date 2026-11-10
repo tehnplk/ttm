@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { TimeSlot } from '../types';
 import { Loader2 } from 'lucide-react';
-import { overtimeSlot } from '@/lib/overtime';
+import { overtimeRound } from '@/lib/overtime';
 
 interface TimeSelectionProps {
   selectedDate: Date;
@@ -41,7 +41,7 @@ export const TimeSelection: React.FC<TimeSelectionProps> = ({
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [openingHours, setOpeningHours] = useState<Array<{ startTime: string; endTime: string }>>([]);
+  const [openingHours, setOpeningHours] = useState<Array<{ startTime: string; endTime: string; slotType?: string }>>([]);
   const [availableCountByTime, setAvailableCountByTime] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -140,13 +140,9 @@ export const TimeSelection: React.FC<TimeSelectionProps> = ({
     return () => { cancelled = true; };
   }, [branchId, selectedDate]);
 
-  // Local date, not toISOString (UTC shifts the day)
-  const selectedDateStr = selectedDate
-    ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`
-    : '';
   const weekday = selectedDate ? selectedDate.getDay() : -1;
   const isWeekend = weekday === 0 || weekday === 6;
-  const isOvertime = (slot: TimeSlot) => !!overtimeSlot(selectedDateStr, slot.time.split(' - ')[0]);
+  const isOvertime = (slot: TimeSlot) => overtimeRound(openingHours, slot.time.split(' - ')[0]) !== null;
   // Overtime rounds run Monday to Friday only
   const regularSlots = slots.filter((slot) => !isOvertime(slot));
   const overtimeSlots = isWeekend ? [] : slots.filter(isOvertime);

@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
     // Overtime round: only staff rostered for that weekday + round can be booked.
     // First HH:mm in bookTime is the slot start for every stored format.
     const slotStart = bookTime?.match(/\d{2}:\d{2}/)?.[0] ?? "";
-    const onShift = await staffOnShift(bookDateStr, slotStart);
+    const onShift = await staffOnShift(branchId, bookDateStr, slotStart);
     if (onShift && !onShift.has(String(empId))) {
       return NextResponse.json(
         {

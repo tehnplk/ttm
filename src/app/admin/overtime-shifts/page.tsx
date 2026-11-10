@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import Swal from "sweetalert2";
 import { toISODateString } from "@/utils";
-import { OVERTIME_ROUNDS as ROUNDS, shiftKey } from "@/lib/overtime";
+import { OVERTIME_ROUND_IDS, overtimeStartTimes, shiftKey } from "@/lib/overtime";
 
 const WEEKDAYS = [
   { id: 1, label: "วันจันทร์" },
@@ -36,7 +36,14 @@ function parseWeek(value: string | null): Date {
 const fmtDayMonth = (d: Date) => d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
 const fmtFull = (d: Date) => d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
 
-type StaffRow = { id: number; name: string };
+type StaffRow = { id: number; name: string; employeeNumber: string | null };
+
+// Same order as /admin/bookings: employee number, then Thai name
+function byEmployeeNumber(a: StaffRow, b: StaffRow): number {
+  const aNum = a.employeeNumber ? Number(a.employeeNumber) : 999999;
+  const bNum = b.employeeNumber ? Number(b.employeeNumber) : 999999;
+  return aNum !== bNum ? aNum - bNum : a.name.localeCompare(b.name, "th");
+}
 type RosterRow = { shifts: Set<string>; note: string };
 type Roster = Record<number, RosterRow>;
 
@@ -71,6 +78,24 @@ function OvertimeShiftsContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // Round column labels: start times of the slots marked นอกเวลา in ตั้งค่าเวลา
+  const [roundTimes, setRoundTimes] = useState<string[]>([]);
+  const ROUNDS = OVERTIME_ROUND_IDS.map((id) => ({ id, time: roundTimes[id - 1] ?? `รอบ ${id}` }));
+
+  useEffect(() => {
+    (async () => {
+      try {
+        // ponytail: labels from the first branch; per-branch rosters if a second branch gets overtime
+        const branchRes = await fetch("/api/admin/branches");
+        const branchId = branchRes.ok ? (await branchRes.json()).branches?.[0]?.id : null;
+        if (!branchId) return;
+        const hoursRes = await fetch(`/api/admin/opening-hours?branchId=${branchId}`);
+        if (hoursRes.ok) setRoundTimes(overtimeStartTimes((await hoursRes.json()).timeSlots ?? []));
+      } catch (err) {
+        console.error("Failed to load overtime round times", err);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -84,7 +109,9 @@ function OvertimeShiftsContent() {
             .map((e: any) => ({
               id: Number(e.id),
               name: `${e.prename || ""}${e.fname || ""} ${e.lname || ""}`.trim(),
-            })),
+              employeeNumber: e.employee_number || null,
+            }))
+            .sort(byEmployeeNumber),
         );
       } catch (err: any) {
         showError(err?.message ?? "โหลดข้อมูลไม่สำเร็จ");
