@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireApiAuth } from "@/lib/api-auth";
 import { auth } from "@/authConfig";
+import { withBookingLock, nextBookingId } from "@/lib/booking-lock";
 
 // List bookings
 export async function GET(request: NextRequest) {
@@ -193,126 +194,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if the slot is already booked
-    try {
-      // Parse time slot to extract start time and end time
-      let timeStr = bookTime.trim();
-      let startTime = '';
-      let endTime = '';
+    // Start/end of the slot, to match rows stored in older book_time formats
+    const timeStr = bookTime.trim();
+    let startTime = '';
+    let endTime = '';
       
-      // If time is in format "t-0-08:30-09:30" or "t-3-15:00-17:00"
-      if (timeStr.startsWith('t-')) {
-        const timeMatch = timeStr.match(/(\d{2}:\d{2})[\s-]+(\d{2}:\d{2})/);
-        if (timeMatch) {
-          startTime = timeMatch[1];
-          endTime = timeMatch[2];
-        } else {
-          // Fallback: split by '-' and take last two parts
-          const parts = timeStr.split('-');
-          if (parts.length >= 4 && /^\d{2}:\d{2}$/.test(parts[parts.length - 2]) && /^\d{2}:\d{2}$/.test(parts[parts.length - 1])) {
-            startTime = parts[parts.length - 2];
-            endTime = parts[parts.length - 1];
-          }
-        }
-      } else if (timeStr.includes(' - ')) {
-        // Format: "15:00 - 17:00"
-        const parts = timeStr.split(' - ');
-        startTime = parts[0].trim();
-        endTime = parts[1].trim();
-      } else if (timeStr.includes('-') && !timeStr.startsWith('t-')) {
-        // Format: "15:00-17:00" (no space)
-        const parts = timeStr.split('-');
-        startTime = parts[0].trim();
-        endTime = parts[1].trim();
+    // If time is in format "t-0-08:30-09:30" or "t-3-15:00-17:00"
+    if (timeStr.startsWith('t-')) {
+      const timeMatch = timeStr.match(/(\d{2}:\d{2})[\s-]+(\d{2}:\d{2})/);
+      if (timeMatch) {
+        startTime = timeMatch[1];
+        endTime = timeMatch[2];
       } else {
-        // Just start time: "15:00"
-        startTime = timeStr;
-      }
-
-      console.log(`[Admin Booking] Checking for conflicts: empId=${empId}, date=${bookDate}, time=${bookTime}, startTime=${startTime}, endTime=${endTime}`);
-
-      // Check for existing bookings with the same employee, date, and same start time
-      // This includes regular bookings AND "off" bookings (booker_name = "off")
-      // Both types of bookings will block new bookings from being created
-      // IMPORTANT: Only match if the start time is EXACTLY the same
-      const existingBookings = await prisma.$queryRaw<Array<{
-        id: number;
-        booker_name: string;
-        book_time: string;
-      }>>`
-        SELECT id, booker_name, book_time
-        FROM booking
-        WHERE emp_id = ${empId}
-          AND DATE(book_date) = DATE(${bookDate})
-          AND (
-            -- Exact match for full time range (with space)
-            book_time = ${bookTime}
-            OR book_time = ${`${startTime} - ${endTime}`}
-            -- Exact match for full time range (without space)
-            OR book_time = ${`${startTime}-${endTime}`}
-            -- Match time slot ID format: "t-X-15:00-17:00" (exact end time match)
-            OR (${endTime} != '' AND book_time LIKE ${`t-%-${startTime}-${endTime}`})
-            -- Match if booking time starts with the same start time exactly
-            OR (${startTime} != '' AND (
-              -- Exact match: just the start time "15:00"
-              book_time = ${startTime}
-              -- Starts with start time followed by space and dash: "15:00 - ..."
-              OR book_time LIKE ${`${startTime} - %`}
-              -- Starts with start time followed by dash (no space): "15:00-..."
-              OR book_time LIKE ${`${startTime}-%`}
-              -- Time slot ID format: "t-X-15:00-..."
-              OR book_time LIKE ${`t-%-${startTime}-%`}
-            ))
-          )
-          AND (status IS NULL OR status = 'pending' OR status = 'confirmed')
-      `;
-
-      console.log(`[Admin Booking] Found ${existingBookings.length} existing bookings (including "off" bookings):`, existingBookings);
-
-      if (existingBookings && existingBookings.length > 0) {
-        const existingBooking = existingBookings[0];
-        const isOff = existingBooking.booker_name === 'off' || existingBooking.booker_name === 'Off' || existingBooking.booker_name === 'OFF';
-        return NextResponse.json(
-          { 
-            error: isOff 
-              ? "ช่วงเวลานี้พนักงานหยุด กรุณาเลือก slot อื่น"
-              : "ช่วงเวลานี้มีคนจองแล้ว กรุณาเลือก slot อื่น",
-            details: isOff
-              ? `พนักงานคนนี้หยุดในวันที่ ${bookDate} เวลา ${existingBooking.book_time}`
-              : `พนักงานคนนี้มีจองในวันที่ ${bookDate} เวลา ${existingBooking.book_time} โดย ${existingBooking.booker_name}`
-          },
-          { status: 409 }, // Conflict status
-        );
-      }
-    } catch (checkError: any) {
-      console.error('Error checking existing bookings:', checkError);
-      // Continue with booking creation if check fails (should not block)
-    }
-
-    // Generate sequential booking ID
-    let nextBookingNumber = 1;
-    try {
-      const result = await prisma.$queryRaw<Array<{ bookingId: string | null }>>`
-        SELECT booking_id as bookingId
-        FROM booking
-        WHERE booking_id IS NOT NULL
-          AND booking_id LIKE 'BK-%'
-        ORDER BY CAST(SUBSTRING(booking_id, 4) AS UNSIGNED) DESC
-        LIMIT 1
-      `;
-      
-      if (result && result.length > 0 && result[0].bookingId) {
-        const match = result[0].bookingId.match(/BK-(\d+)/);
-        if (match) {
-          nextBookingNumber = parseInt(match[1], 10) + 1;
+        // Fallback: split by '-' and take last two parts
+        const parts = timeStr.split('-');
+        if (parts.length >= 4 && /^\d{2}:\d{2}$/.test(parts[parts.length - 2]) && /^\d{2}:\d{2}$/.test(parts[parts.length - 1])) {
+          startTime = parts[parts.length - 2];
+          endTime = parts[parts.length - 1];
         }
       }
-    } catch (error) {
-      console.error('Error finding max booking ID, starting from 1:', error);
-      nextBookingNumber = 1;
+    } else if (timeStr.includes(' - ')) {
+      // Format: "15:00 - 17:00"
+      const parts = timeStr.split(' - ');
+      startTime = parts[0].trim();
+      endTime = parts[1].trim();
+    } else if (timeStr.includes('-')) {
+      // Format: "15:00-17:00" (no space)
+      const parts = timeStr.split('-');
+      startTime = parts[0].trim();
+      endTime = parts[1].trim();
+    } else {
+      // Just start time: "15:00"
+      startTime = timeStr;
     }
-
-    const bookingId = `BK-${String(nextBookingNumber).padStart(6, '0')}`;
     
     // Save current date and time in note5 when booking is created
     // Format: YYYY-MM-DD HH:mm:ss
@@ -346,12 +260,35 @@ export async function POST(request: NextRequest) {
     
     console.log(`[Admin Booking] Date received: "${bookDate}", parsed to: "${bookDateStr}"`);
 
-    // Try to create with raw SQL to preserve exact date
-    let createdId = 0;
-    let createdBookingId = bookingId;
-    try {
-      // Insert using raw SQL to control date format exactly
-      await prisma.$executeRaw`
+    // Slot check, BK number and insert run under one lock, so concurrent
+    // requests cannot take the same slot or the same number.
+    const result = await withBookingLock(async (tx) => {
+      // Regular bookings and "off" rows (booker_name = "off") both block the slot
+      const taken = await tx.$queryRaw<Array<{ booker_name: string; book_time: string }>>`
+        SELECT booker_name, book_time
+        FROM booking
+        WHERE emp_id = ${empId}
+          AND DATE(book_date) = DATE(${bookDate})
+          AND (
+            book_time = ${bookTime}
+            OR book_time = ${`${startTime} - ${endTime}`}
+            OR book_time = ${`${startTime}-${endTime}`}
+            OR (${endTime} != '' AND book_time LIKE ${`t-%-${startTime}-${endTime}`})
+            OR (${startTime} != '' AND (
+              book_time = ${startTime}
+              OR book_time LIKE ${`${startTime} - %`}
+              OR book_time LIKE ${`${startTime}-%`}
+              OR book_time LIKE ${`t-%-${startTime}-%`}
+            ))
+          )
+          AND (status IS NULL OR status = 'pending' OR status = 'confirmed')
+        LIMIT 1
+      `;
+      if (taken.length > 0) return { taken: taken[0] };
+
+      const bookingId = await nextBookingId(tx);
+      // Raw SQL keeps the date exactly as given; Prisma would shift it to UTC
+      await tx.$executeRaw`
         INSERT INTO booking (
           emp_id, branch_id, service_id, book_date, book_time,
           booker_name, booker_tel, note1, note2, note3, note4, note5,
@@ -376,70 +313,27 @@ export async function POST(request: NextRequest) {
         )
       `;
       
-      // Get the last inserted ID
-      const lastInsertResult = await prisma.$queryRaw<Array<{ id: bigint }>>`
-        SELECT LAST_INSERT_ID() as id
-      `;
-      // Convert BigInt to Number (safe for booking IDs)
-      createdId = Number(lastInsertResult[0]?.id || 0);
-      
-      console.log(`[Admin Booking] Created booking ID: ${createdId}, date saved: ${bookDateStr}`);
-    } catch (error: any) {
-      console.error('Error creating booking with raw SQL:', error);
-      // If raw SQL fails, fallback to Prisma ORM with noon time to avoid timezone shift
-      const bookDateForPrisma = new Date(bookDateStr + 'T12:00:00');
-      
-      try {
-        const created = await prisma.booking.create({
-          data: {
-            empId,
-            branchId: branchId && !isNaN(branchId) ? branchId : null,
-            serviceId: serviceId && !isNaN(serviceId) ? serviceId : null,
-            bookDate: bookDateForPrisma,
-            bookTime,
-            bookerName,
-            bookerTel,
-            note1,
-            note2,
-            note3,
-            note4: "",
-            note5: bookingCreatedAt,
-            bookingId: bookingId,
-            cid,
-            lineId,
-            status: status || "pending",
-          },
-        });
-        createdId = created.id;
-      } catch (createError: any) {
-        // If bookingId column doesn't exist, create without it
-        if (createError?.code === 'P2003' || createError?.message?.includes('booking_id')) {
-          console.warn('bookingId column not found, creating without it');
-          const created = await prisma.booking.create({
-            data: {
-              empId,
-              branchId: branchId && !isNaN(branchId) ? branchId : null,
-              serviceId: serviceId && !isNaN(serviceId) ? serviceId : null,
-              bookDate: bookDateForPrisma,
-              bookTime,
-              bookerName,
-              bookerTel,
-              note1,
-              note2,
-              note3,
-              note4: "",
-              note5: bookingCreatedAt,
-              cid,
-              lineId,
-              status: status || "pending",
-            },
-          });
-          createdId = created.id;
-        } else {
-          throw createError;
-        }
-      }
+      const inserted = await tx.$queryRaw<Array<{ id: bigint }>>`SELECT LAST_INSERT_ID() as id`;
+      return { id: Number(inserted[0].id), bookingId };
+    });
+
+    if (result.taken) {
+      const isOff = result.taken.booker_name.toLowerCase() === 'off';
+      return NextResponse.json(
+        {
+          error: isOff
+            ? "ช่วงเวลานี้พนักงานหยุด กรุณาเลือก slot อื่น"
+            : "ช่วงเวลานี้มีคนจองแล้ว กรุณาเลือก slot อื่น",
+          details: isOff
+            ? `พนักงานคนนี้หยุดในวันที่ ${bookDate} เวลา ${result.taken.book_time}`
+            : `พนักงานคนนี้มีจองในวันที่ ${bookDate} เวลา ${result.taken.book_time} โดย ${result.taken.booker_name}`
+        },
+        { status: 409 },
+      );
     }
+    const createdId = result.id;
+    const createdBookingId = result.bookingId;
+    console.log(`[Admin Booking] Created booking ID: ${createdId}, date saved: ${bookDateStr}`);
 
     // Fetch created booking with employee info
     const created = await prisma.booking.findUnique({

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { z } from 'zod';
 import { isWithinBookingHours, BOOKING_HOURS_MESSAGE } from '@/lib/bookingHours';
 import { staffOnShift } from '@/lib/overtime-server';
+import { withBookingLock, nextBookingId } from '@/lib/booking-lock';
 
 // Schema for input validation
 const bookingSchema = z.object({
@@ -226,110 +227,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if slot is already booked before creating new booking
-    // This prevents race condition where multiple users try to book the same slot
-    try {
-      // Parse time slot to extract start and end time
-      let startTime = '';
-      let endTime = '';
-      const timeStr = bookTime?.trim() || '';
+    // Start/end of the slot, to match rows stored in older book_time formats
+    let startTime = '';
+    let endTime = '';
+    const timeStr = bookTime?.trim() || '';
       
-      if (timeStr.startsWith('t-')) {
-        // Format: "t-0-08:30-09:30"
-        const timeMatch = timeStr.match(/(\d{2}:\d{2})-(\d{2}:\d{2})$/);
-        if (timeMatch) {
-          startTime = timeMatch[1];
-          endTime = timeMatch[2];
-        }
-      } else if (timeStr.includes(' - ')) {
-        // Format: "08:30 - 09:30"
-        const parts = timeStr.split(' - ');
-        startTime = parts[0].trim();
-        endTime = parts[1]?.trim() || '';
-      } else {
-        startTime = timeStr;
+    if (timeStr.startsWith('t-')) {
+      // Format: "t-0-08:30-09:30"
+      const timeMatch = timeStr.match(/(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+      if (timeMatch) {
+        startTime = timeMatch[1];
+        endTime = timeMatch[2];
       }
-
-      console.log(`[Booking] Checking for conflicts: date="${bookDateStr}", time="${timeStr}", startTime="${startTime}", endTime="${endTime}", empId=${empId}`);
-
-      // Check for existing bookings with the same staff, date, and time
-      // This includes regular bookings AND "off" bookings (booker_name = "off")
-      // Both types of bookings will block new bookings from being created
-      const existingBookings = await prisma.$queryRaw<Array<{
-        id: number;
-        booker_name: string;
-        book_time: string;
-      }>>`
-        SELECT id, booker_name, book_time
-        FROM booking
-        WHERE emp_id = ${empId}
-          AND DATE(book_date) = ${bookDateStr}
-          AND (
-            -- Exact match
-            book_time = ${timeStr}
-            -- Match time slot format "t-X-HH:mm-HH:mm"
-            OR (${startTime} != '' AND ${endTime} != '' AND book_time LIKE ${`t-%-${startTime}-${endTime}`})
-            -- Match time range format "HH:mm - HH:mm"
-            OR (${startTime} != '' AND ${endTime} != '' AND book_time = ${`${startTime} - ${endTime}`})
-            -- Match if booking starts at same time
-            OR (${startTime} != '' AND (
-              book_time LIKE ${`t-%-${startTime}-%`}
-              OR book_time LIKE ${`${startTime} - %`}
-              OR book_time = ${startTime}
-            ))
-          )
-          AND (status IS NULL OR status = 'pending' OR status = 'confirmed' OR status = 'completed')
-      `;
-
-      console.log(`[Booking] Found ${existingBookings.length} existing bookings for this slot (including "off" bookings)`);
-
-      if (existingBookings && existingBookings.length > 0) {
-        const existing = existingBookings[0];
-        const isOff = existing.booker_name === 'off' || existing.booker_name === 'Off' || existing.booker_name === 'OFF';
-        console.warn(`[Booking Rejected] Slot already booked by: ${existing.booker_name}, time: ${existing.book_time}, isOff: ${isOff}`);
-        return NextResponse.json(
-          { 
-            error: 'Slot already booked',
-            message: isOff 
-              ? `ช่วงเวลานี้พนักงานหยุด กรุณาเลือก slot อื่น`
-              : `ช่วงเวลานี้มีคนจองแล้ว กรุณาเลือก slot อื่น`
-          },
-          { status: 409 } // Conflict
-        );
-      }
-    } catch (checkError: any) {
-      console.error('Error checking existing bookings:', checkError);
-      // Continue with booking creation if check fails (should not block)
+    } else if (timeStr.includes(' - ')) {
+      // Format: "08:30 - 09:30"
+      const parts = timeStr.split(' - ');
+      startTime = parts[0].trim();
+      endTime = parts[1]?.trim() || '';
+    } else {
+      startTime = timeStr;
     }
 
-    // Generate sequential booking ID
-    // Find the highest booking ID number and increment by 1
-    let nextBookingNumber = 1;
-    try {
-      const result = await prisma.$queryRaw<Array<{ bookingId: string | null }>>`
-        SELECT booking_id as bookingId
-        FROM booking
-        WHERE booking_id IS NOT NULL
-          AND booking_id LIKE 'BK-%'
-        ORDER BY CAST(SUBSTRING(booking_id, 4) AS UNSIGNED) DESC
-        LIMIT 1
-      `;
-
-      if (result && result.length > 0 && result[0].bookingId) {
-        // Extract number from booking ID (e.g., "BK-000018" -> 18)
-        const match = result[0].bookingId.match(/BK-(\d+)/);
-        if (match) {
-          nextBookingNumber = parseInt(match[1], 10) + 1;
-        }
-      }
-    } catch (error) {
-      console.error('Error finding max booking ID, starting from 1:', error);
-      // If column doesn't exist yet, start from 1
-      nextBookingNumber = 1;
-    }
-
-    // Format booking ID (e.g., BK-000001, BK-000002, etc.)
-    const bookingId = `BK-${String(nextBookingNumber).padStart(6, '0')}`;
     
     // Save current date and time in Thai timezone (UTC+7)
     const now = new Date();
@@ -342,12 +260,33 @@ export async function POST(request: NextRequest) {
     const seconds = String(thaiDate.getSeconds()).padStart(2, '0');
     const bookingCreatedAt = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 
-    // Create booking in database using raw SQL to preserve exact date
-    // This avoids timezone issues where Prisma converts Date to UTC before saving
-    let booking: { id: number } = { id: 0 };
-    try {
-      // Insert using raw SQL to control date format exactly
-      await prisma.$executeRaw`
+    // Slot check, BK number and insert run under one lock, so concurrent
+    // requests cannot take the same slot or the same number.
+    const created = await withBookingLock(async (tx) => {
+      // Regular bookings and "off" rows (booker_name = "off") both block the slot
+      const taken = await tx.$queryRaw<Array<{ booker_name: string; book_time: string }>>`
+        SELECT booker_name, book_time
+        FROM booking
+        WHERE emp_id = ${empId}
+          AND DATE(book_date) = ${bookDateStr}
+          AND (
+            book_time = ${timeStr}
+            OR (${startTime} != '' AND ${endTime} != '' AND book_time LIKE ${`t-%-${startTime}-${endTime}`})
+            OR (${startTime} != '' AND ${endTime} != '' AND book_time = ${`${startTime} - ${endTime}`})
+            OR (${startTime} != '' AND (
+              book_time LIKE ${`t-%-${startTime}-%`}
+              OR book_time LIKE ${`${startTime} - %`}
+              OR book_time = ${startTime}
+            ))
+          )
+          AND (status IS NULL OR status = 'pending' OR status = 'confirmed' OR status = 'completed')
+        LIMIT 1
+      `;
+      if (taken.length > 0) return { taken: taken[0] };
+
+      const bookingId = await nextBookingId(tx);
+      // Raw SQL keeps the date exactly as given; Prisma would shift it to UTC
+      await tx.$executeRaw`
         INSERT INTO booking (
           emp_id, branch_id, service_id, price, book_date, book_time,
           booker_name, booker_tel, note1, note2, note3, note4, note5,
@@ -373,53 +312,27 @@ export async function POST(request: NextRequest) {
         )
       `;
       
-      // Get the last inserted ID
-      const lastInsertResult = await prisma.$queryRaw<Array<{ id: bigint }>>`
-        SELECT LAST_INSERT_ID() as id
-      `;
-      // Convert BigInt to Number (safe for booking IDs)
-      booking = { id: Number(lastInsertResult[0]?.id || 0) };
-      
-      console.log(`[Booking] Created booking ID: ${booking.id}, date saved: ${bookDateStr}`);
-    } catch (error: any) {
-      console.error('Error creating booking with raw SQL:', error);
-      // If raw SQL fails (e.g., column doesn't exist), fallback to Prisma ORM
-      // But we need to adjust for timezone
-      const bookDateForPrisma = new Date(bookDateStr + 'T12:00:00'); // Noon to avoid timezone shift
-      const bookingData: any = {
-        empId: empId,
-        branchId: branchIdNum && !isNaN(branchIdNum) ? branchIdNum : null,
-        serviceId: serviceIdNum && !isNaN(serviceIdNum) ? serviceIdNum : null,
-        price: priceDecimal !== null ? priceDecimal : null,
-        bookDate: bookDateForPrisma,
-        bookTime: bookTime,
-        bookerName: customerName,
-        bookerTel: customerPhone,
-        note1: "online",
-        note2: null,
-        note3: null,
-        note4: note || '',
-        note5: bookingCreatedAt,
-        bookingId: bookingId,
-        cid: null,
-        lineId: userId || null,
-      };
+      const inserted = await tx.$queryRaw<Array<{ id: bigint }>>`SELECT LAST_INSERT_ID() as id`;
+      return { id: Number(inserted[0].id), bookingId };
+    });
 
-      try {
-        const created = await prisma.booking.create({ data: bookingData });
-        booking = { id: created.id };
-      } catch (createError: any) {
-        // If bookingId column doesn't exist, create without it
-        if (createError?.code === 'P2003' || createError?.message?.includes('booking_id')) {
-          console.warn('bookingId column not found, creating without it');
-          const { bookingId: _, ...bookingDataWithoutId } = bookingData;
-          const created = await prisma.booking.create({ data: bookingDataWithoutId });
-          booking = { id: created.id };
-        } else {
-          throw createError;
-        }
-      }
+    if (created.taken) {
+      const isOff = created.taken.booker_name.toLowerCase() === 'off';
+      console.warn(`[Booking Rejected] Slot already booked by: ${created.taken.booker_name}, time: ${created.taken.book_time}, isOff: ${isOff}`);
+      return NextResponse.json(
+        {
+          error: 'Slot already booked',
+          message: isOff
+            ? `ช่วงเวลานี้พนักงานหยุด กรุณาเลือก slot อื่น`
+            : `ช่วงเวลานี้มีคนจองแล้ว กรุณาเลือก slot อื่น`
+        },
+        { status: 409 }
+      );
     }
+    const booking = { id: created.id };
+    const bookingId = created.bookingId;
+      
+    console.log(`[Booking] Created booking ID: ${booking.id}, date saved: ${bookDateStr}`);
 
 
     // Broadcast event to admin bookings page via SSE (fire and forget)
